@@ -2,56 +2,202 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>布品盤點系統</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>飯店布品盤點</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; touch-action: manipulation; }
+        .main-container { max-width: 500px; margin: 0 auto; }
+        /* 隱藏原生日期選單圖示 */
+        input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+        /* 確保畫布防滑動 */
+        #signCanvas { display: block; width: 100%; height: 200px; background: #fff; border: 1px solid #d1d5db; border-radius: 0.5rem; touch-action: none; }
+        /* 鎖定狀態樣式 */
+        input:disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4">
-    <div id="app" class="max-w-md mx-auto">
-        <h1 class="text-xl font-bold mb-4 text-center">布品盤點系統</h1>
-        <div id="ui-container"></div>
+<body class="p-4 pb-24">
+    <div class="main-container">
+        <h1 class="text-2xl font-bold text-center mb-5 text-gray-800">飯店布品盤點系統</h1>
+        
+        <!-- 上方控制區：保證完美對齊，不溢出 -->
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-5 flex flex-col gap-3 box-border">
+            
+            <!-- 1. 日期框 (灰色) -->
+            <div class="relative w-full bg-gray-200 rounded-lg">
+                <div id="dateDisplay" class="w-full text-center font-bold text-xl py-3 pointer-events-none text-black">
+                    載入中...
+                </div>
+                <!-- 透明的真實 input 疊在上方 -->
+                <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
+            </div>
+
+            <!-- 2. 飯店選單 (灰色) -->
+            <select id="hotelSelect" class="w-full bg-gray-200 rounded-lg font-bold text-xl py-3 px-4 outline-none box-border text-center appearance-none" onchange="renderItems()">
+            </select>
+            
+            <!-- 3. 搜尋框 (白色帶邊框) -->
+            <div class="relative w-full box-border">
+                <span class="absolute left-3 top-3.5 text-gray-400 text-xl">🔍</span>
+                <input id="searchInput" class="w-full border border-gray-300 rounded-lg text-xl py-3 pl-10 pr-4 outline-none placeholder-gray-400 box-border" placeholder="搜尋品項..." oninput="renderItems()">
+            </div>
+        </div>
+
+        <!-- 卡片列表區 -->
+        <div id="itemsList" class="space-y-4"></div>
+
+        <!-- 新增品項區 -->
+        <div class="bg-white p-4 rounded-xl border-2 border-dashed border-gray-300 mt-6">
+            <h2 class="font-bold text-base mb-3 text-gray-700">新增臨時品項</h2>
+            <div class="flex gap-2">
+                <input id="newItemInput" class="flex-1 p-2 border rounded-lg text-base" placeholder="輸入布品名稱">
+                <button onclick="addNewItem()" class="p-2 bg-green-600 text-white rounded-lg font-bold text-base px-6 shadow-sm">新增</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 簽名視窗 -->
+    <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999]">
+        <div class="bg-white p-5 rounded-2xl w-full max-w-sm">
+            <h2 class="text-xl font-bold mb-4 text-center">請在下方簽名</h2>
+            <canvas id="signCanvas"></canvas>
+            <div class="flex gap-3 mt-5">
+                <button onclick="clearCanvas()" class="flex-1 py-3 bg-gray-200 rounded-lg font-bold text-base text-gray-700">清除</button>
+                <button onclick="submitData()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold text-base shadow-sm">確認送出</button>
+            </div>
+        </div>
     </div>
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbwJv-qdQcoqowK1JYqSttVGYiSh0nW-SO1-6N_D9pSHok36i7XMt_uL_oRMKJGxFWw/exec";
-        let masterData = [];
+        let masterData = [], activeItem = "";
+        const canvas = document.getElementById('signCanvas');
+        const ctx = canvas.getContext('2d');
+        let painting = false;
 
         async function init() {
+            setupDateLimits();
             const res = await fetch(`${API_URL}?action=getData`);
             masterData = await res.json();
-            renderUI();
-        }
-
-        function renderUI() {
-            const container = document.getElementById('ui-container');
-            const hotels = [...new Set(masterData.map(d => d.hotel))];
-            
-            container.innerHTML = `
-                <div class="bg-white p-3 rounded-xl shadow-sm mb-4 space-y-2">
-                    <select id="hotelSelect" class="w-full p-2 border rounded" onchange="renderItems()">
-                        ${hotels.map(h => `<option value="${h}">${h}</option>`).join('')}
-                    </select>
-                    <input id="searchInput" class="w-full p-2 border rounded" placeholder="搜尋品項..." oninput="renderItems()">
-                </div>
-                <div id="itemsList" class="space-y-3"></div>
-            `;
+            document.getElementById('hotelSelect').innerHTML = [...new Set(masterData.map(d => d.hotel))].map(h => `<option value="${h}">${h}</option>`).join('');
             renderItems();
         }
 
+        // --- 日期與鎖定邏輯 ---
+        function setupDateLimits() {
+            const today = new Date();
+            const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 2, today.getDate());
+            
+            const dp = document.getElementById('datePicker');
+            dp.max = today.toISOString().split('T')[0];
+            dp.min = twoMonthsAgo.toISOString().split('T')[0];
+            dp.value = today.toISOString().split('T')[0];
+            updateDateDisplay();
+        }
+
+        function dateChanged() {
+            updateDateDisplay();
+            renderItems();
+        }
+
+        function updateDateDisplay() {
+            const dateStr = document.getElementById('datePicker').value;
+            if(!dateStr) return;
+            const d = new Date(dateStr);
+            document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        }
+
+        function isLocked() {
+            const selectedDate = new Date(document.getElementById('datePicker').value);
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            selectedDate.setHours(0,0,0,0);
+            const diffDays = (today - selectedDate) / (1000 * 60 * 60 * 24);
+            return diffDays > 2; // 超過2天前鎖定
+        }
+
+        // --- 畫面渲染邏輯 ---
         function renderItems() {
             const hotel = document.getElementById('hotelSelect').value;
             const search = document.getElementById('searchInput').value.toLowerCase();
-            const list = document.getElementById('itemsList');
-            const filtered = masterData.filter(d => d.hotel === hotel && d.item.toLowerCase().includes(search));
+            const locked = isLocked();
             
-            list.innerHTML = filtered.map(d => `
-                <div class="bg-white p-4 rounded-xl flex items-center justify-between">
-                    <span class="font-bold">${d.item}</span>
-                    <input type="number" class="w-20 border rounded p-1 count-input" data-item="${d.item}">
-                    <button onclick="alert('簽名板功能已準備就緒')" class="p-2 bg-blue-600 text-white rounded">✍️</button>
+            document.getElementById('itemsList').innerHTML = masterData.filter(d => d.hotel === hotel && d.item.toLowerCase().includes(search)).map(d => `
+                <div class="bg-white p-4 rounded-2xl shadow-sm ${locked ? 'opacity-60' : ''}">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="font-bold text-2xl text-gray-900">${d.item}</span>
+                        <input type="number" id="count-${d.item}" inputmode="numeric" pattern="[0-9]*" ${locked ? 'disabled' : ''} class="w-20 p-1 text-right font-bold text-2xl border-b-2 border-blue-400 bg-transparent outline-none focus:border-blue-600" placeholder="0">
+                    </div>
+                    <!-- 備註欄縮小：p-2, text-sm -->
+                    <input type="text" id="note-${d.item}" ${locked ? 'disabled' : ''} class="w-full p-2 mb-3 border border-gray-200 rounded-md text-sm bg-gray-50 placeholder-gray-400 outline-none focus:border-blue-400" placeholder="備註...">
+                    <!-- 簽名按鈕縮小：py-2, text-base, rounded-md -->
+                    <button onclick="openSign('${d.item}')" ${locked ? 'disabled' : ''} class="w-full py-2 bg-blue-600 text-white rounded-md font-bold text-base tracking-wide shadow-sm">簽名確認</button>
                 </div>
             `).join('');
         }
+
+        function addNewItem() {
+            const val = document.getElementById('newItemInput').value;
+            if(val) {
+                masterData.push({hotel: document.getElementById('hotelSelect').value, item: val});
+                document.getElementById('newItemInput').value = "";
+                renderItems();
+            }
+        }
+
+        // --- 簽名板修復邏輯 ---
+        function start(e) { painting = true; draw(e); }
+        function draw(e) {
+            if(!painting) return;
+            e.preventDefault(); // 阻止螢幕滑動
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+        function stop() { painting = false; ctx.beginPath(); }
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('touchstart', start, {passive: false});
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('mouseup', stop);
+        canvas.addEventListener('touchend', stop);
+
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.beginPath(); }
+        
+        function openSign(item) { 
+            activeItem = item; 
+            document.getElementById('signModal').classList.remove('hidden'); 
+            
+            // 關鍵修復：等視窗彈出來有寬度了，再設定畫布解析度
+            requestAnimationFrame(() => {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = 200;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000';
+                clearCanvas();
+            });
+        }
+
+        async function submitData() {
+            const payload = { 
+                hotel: document.getElementById('hotelSelect').value, 
+                item: activeItem, 
+                count: document.getElementById('count-'+activeItem).value, 
+                note: document.getElementById('note-'+activeItem).value, 
+                timestamp: new Date().toLocaleString() 
+            };
+            await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+            alert("已成功寫入試算表！"); 
+            document.getElementById('signModal').classList.add('hidden');
+        }
+
         init();
     </script>
 </body>
