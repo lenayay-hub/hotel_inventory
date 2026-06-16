@@ -28,18 +28,24 @@
             </button>
         </div>
         
+        <!-- 上方控制區：強制高度一致 (h-14) -->
         <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
+            
+            <!-- 日期選擇 -->
             <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
-                <select id="hotelSelect" class="w-full h-full bg-transparent font-bold text-xl px-4 outline-none text-center text-gray-900" style="-webkit-appearance: none; appearance: none;" onchange="renderItems()">
+            <!-- ★ 終極隱藏箭頭法：利用全透明 select 覆蓋在純文字上方 -->
+            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center overflow-hidden">
+                <div id="hotelDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
+                <select id="hotelSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="document.getElementById('hotelDisplay').innerText = this.options[this.selectedIndex].text; renderItems()">
                     <option value="">載入中...</option>
                 </select>
             </div>
             
+            <!-- 搜尋框 -->
             <div class="relative w-full h-14">
                 <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
                 <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="搜尋飯店名稱..." oninput="renderItems()">
@@ -75,13 +81,14 @@
     <!-- 簽名視窗 -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
-            <h2 class="text-lg font-bold mb-3 text-center text-gray-800">請在下方簽名</h2>
+            <!-- ★ 加入清除重寫的文字按鈕，避免簽錯無法改 -->
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-lg font-bold text-gray-800">請在下方簽名</h2>
+                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 active:bg-red-50 rounded">清除重寫</button>
+            </div>
             <canvas id="signCanvas"></canvas>
-            
-            <!-- ★ 雙按鈕：清除 與 確定傳送 -->
-            <div class="flex gap-3 mt-4">
-                <button onclick="clearCanvas()" class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-lg shadow-sm active:bg-gray-300">清除</button>
-                <button onclick="submitData()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-800">確定傳送</button>
+            <div class="mt-4">
+                <button onclick="submitData()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-800">確定傳送</button>
             </div>
         </div>
     </div>
@@ -110,34 +117,47 @@
             try {
                 const noCacheUrl = `${API_URL}?action=getData&t=${new Date().getTime()}`;
                 const res = await fetch(noCacheUrl);
+                
                 if (!res.ok) throw new Error(`連線錯誤狀態碼: ${res.status}`);
+                
                 const data = await res.json();
                 
-                if (data.template && Array.isArray(data.template)) masterData = data.template;
-                else if (data.data && Array.isArray(data.data)) masterData = data.data;
-                else if (Array.isArray(data)) masterData = data;
-                else throw new Error("回傳格式不正確");
+                if (data.template && Array.isArray(data.template)) {
+                    masterData = data.template;
+                } else if (data.data && Array.isArray(data.data)) {
+                    masterData = data.data;
+                } else if (Array.isArray(data)) {
+                    masterData = data;
+                } else {
+                    throw new Error("回傳格式不正確");
+                }
 
                 if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到飯店資料");
                 
-                userInputs = {};
+                // ★ 寫入雲端紀錄，但保留手機本地的「簽名圖片」
                 if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        // ★ 把簽名檔也存進記憶體
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, sign: r.sign || '' };
+                        
+                        const existingSign = userInputs[r.date][r.hotel][r.item]?.signature || '';
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, signature: existingSign };
                     });
                 }
 
                 const hotels = [...new Set(masterData.map(d => d.hotel))];
                 const hotelSelect = document.getElementById('hotelSelect');
+                const hotelDisplay = document.getElementById('hotelDisplay');
                 
                 if (hotels.length > 0 && !hotelSelect.value) {
                     hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
                     hotelSelect.value = hotels[0]; 
+                    hotelDisplay.innerText = hotels[0];
                 } else if (hotels.length > 0) {
                     hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
+                    hotelDisplay.innerText = hotelSelect.options[hotelSelect.selectedIndex]?.text || hotels[0];
+                } else {
+                    hotelDisplay.innerText = "無選項";
                 }
                 
                 renderItems();
@@ -154,6 +174,7 @@
             const today = new Date();
             const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             const nextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0); 
+            
             const dp = document.getElementById('datePicker');
             dp.min = getLocalDateString(prevMonth);
             dp.max = getLocalDateString(nextMonth);
@@ -179,7 +200,7 @@
         function handleInput(date, hotel, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][hotel]) userInputs[date][hotel] = {};
-            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '', sign: '' };
+            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '', signature: '' };
             userInputs[date][hotel][item][field] = value;
         }
 
@@ -190,8 +211,11 @@
             const locked = isLocked();
             
             let filteredData = masterData;
-            if (search) filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
-            else filteredData = masterData.filter(d => d.hotel === dropdownHotel);
+            if (search) {
+                filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
+            } else {
+                filteredData = masterData.filter(d => d.hotel === dropdownHotel);
+            }
             
             if (filteredData.length === 0) {
                 document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">無符合資料</div>';
@@ -201,6 +225,11 @@
             document.getElementById('itemsList').innerHTML = filteredData.map(d => {
                 const savedCount = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
                 const savedNote = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
+                const hasSign = userInputs[dateStr]?.[d.hotel]?.[d.item]?.signature;
+                
+                // ★ 依照有沒有簽過名，改變按鈕的外觀與文字
+                const btnClass = hasSign ? 'bg-green-600' : 'bg-blue-600';
+                const btnText = hasSign ? '✅ 已簽名 (點擊查看/修改)' : '簽名確認';
                 
                 return `
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 ${locked ? 'locked-card' : ''}">
@@ -220,7 +249,7 @@
                         value="${savedNote}" 
                         ${locked ? 'disabled' : ''}
                         class="w-full p-1.5 mb-2 border border-gray-200 rounded text-sm bg-gray-50 outline-none" placeholder="備註...">
-                    <button onclick="openSign('${d.hotel}', '${d.item}')" ${locked ? 'disabled' : ''} class="w-full py-1.5 bg-blue-600 text-white rounded font-bold text-sm shadow-sm active:bg-blue-800">簽名確認</button>
+                    <button onclick="openSign('${d.hotel}', '${d.item}')" ${locked ? 'disabled' : ''} class="w-full py-1.5 ${btnClass} text-white rounded font-bold text-sm shadow-sm active:opacity-80 transition-colors">${btnText}</button>
                 </div>
             `}).join('');
         }
@@ -287,14 +316,7 @@
             document.getElementById('editScreen').classList.remove('hidden');
         }
 
-        // --- 畫布與簽名處理邏輯 ---
-        function clearCanvas() {
-            // 填滿白底，否則存成圖片時背景會變黑
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.beginPath();
-        }
-
+        // 畫布操作
         function start(e) { painting = true; draw(e); }
         function draw(e) {
             if(!painting) return;
@@ -305,6 +327,7 @@
             ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
         }
         function stop() { painting = false; ctx.beginPath(); }
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
 
         canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
         canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
@@ -317,10 +340,6 @@
             activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
             
-            const dateStr = document.getElementById('datePicker').value;
-            // 嘗試取得之前存下來的簽名圖檔
-            const savedSign = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.sign;
-
             requestAnimationFrame(() => {
                 canvas.width = canvas.offsetWidth;
                 canvas.height = 220;
@@ -328,16 +347,15 @@
                 ctx.lineCap = 'round';
                 ctx.strokeStyle = '#000';
                 
-                // 如果有舊簽名，就畫出來；沒有就給白底
-                if (savedSign && savedSign.startsWith('data:image')) {
+                // ★ 每次打開先清空，接著讀取有沒有暫存的簽名圖片
+                clearCanvas();
+                const dateStr = document.getElementById('datePicker').value;
+                const savedSign = userInputs[dateStr]?.[hotel]?.[item]?.signature;
+                
+                if (savedSign) {
                     const img = new Image();
-                    img.onload = () => {
-                        clearCanvas(); // 先上白底
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height); // 再疊上簽名
-                    };
+                    img.onload = () => ctx.drawImage(img, 0, 0);
                     img.src = savedSign;
-                } else {
-                    clearCanvas();
                 }
             });
         }
@@ -359,11 +377,8 @@
                 return;
             }
 
-            // ★ 將畫布存成體積較小的 jpeg 圖檔 (品質 0.8)
-            const signBase64 = canvas.toDataURL('image/jpeg', 0.8);
-            
-            // 立刻更新到本地記憶體，確保馬上打開就看得到
-            handleInput(dateStr, activeHotel, activeItem, 'sign', signBase64);
+            // ★ 傳送時，將畫布轉換成圖片並記錄在手機記憶體中
+            handleInput(dateStr, activeHotel, activeItem, 'signature', canvas.toDataURL());
 
             const payload = { 
                 date: dateStr,
@@ -371,18 +386,21 @@
                 item: activeItem, 
                 count: countVal, 
                 note: noteVal, 
-                sign: signBase64, // 傳送簽名檔給 Google 試算表
                 timestamp: new Date().toLocaleString() 
             };
             
             closeSign();
             showToast(`✅ ${activeItem} 已送出`);
             
-            // ★ 背景傳送，完全不執行自動重整
+            // 重繪清單，讓按鈕變綠色
+            renderItems();
+
             fetch(`${API_URL}?t=${new Date().getTime()}`, { 
                 method: 'POST', 
                 mode: 'no-cors', 
                 body: JSON.stringify(payload) 
+            }).then(() => {
+                setTimeout(init, 1500);
             });
         }
 
