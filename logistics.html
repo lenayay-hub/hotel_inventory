@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>百麒物流 - 飯店點收簽單</title>
+    <title>百麒物流 - 飯店點收單</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; touch-action: manipulation; }
@@ -24,26 +24,22 @@
             <p id="dateTitle" class="text-lg font-bold text-blue-200">今日出貨點收單</p>
         </div>
 
-        <!-- 明細列表 -->
-        <div id="itemsList" class="space-y-4">
-            <div class="text-center py-10 text-gray-500 font-bold text-lg">載入今日放行出貨單中...</div>
-        </div>
-
-        <!-- 底部結算按鈕 -->
-        <div id="checkoutBtnBox" class="hidden mt-8">
-            <button onclick="openSignModal()" class="w-full p-4 bg-green-600 text-white rounded-xl font-bold text-xl shadow-lg active:bg-green-700">
-                📝 確認無誤，進行雙方簽名
-            </button>
+        <!-- 明細列表與分區簽名 -->
+        <div id="departmentsContainer" class="space-y-8">
+            <div class="text-center py-10 text-gray-500 font-bold text-lg">正在抓取今日盤點資料...</div>
         </div>
     </div>
 
-    <!-- 雙簽名視窗 -->
+    <!-- 雙簽名視窗 (共用) -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000] overflow-y-auto">
         <div class="bg-white p-5 rounded-2xl w-full max-w-sm my-auto">
+            <div class="text-center mb-4">
+                <span id="modalDeptTitle" class="inline-block bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-full text-sm">部門名稱</span>
+            </div>
             
             <div class="mb-5">
                 <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-lg font-bold text-blue-800">1. 飯店端負責人簽收</h2>
+                    <h2 class="text-lg font-bold text-blue-800">1. 飯店方確認簽收</h2>
                     <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除重寫</button>
                 </div>
                 <canvas id="clientCanvas" class="sign-canvas"></canvas>
@@ -51,7 +47,7 @@
 
             <div class="mb-6">
                 <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-lg font-bold text-gray-800">2. 百麒物流司機簽收</h2>
+                    <h2 class="text-lg font-bold text-gray-800">2. 百麒物流簽收</h2>
                     <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除重寫</button>
                 </div>
                 <canvas id="driverCanvas" class="sign-canvas"></canvas>
@@ -65,20 +61,20 @@
     </div>
 
     <script>
-        // ★ 請填寫您新發佈的 Apps Script URL
-        const API_URL = "https://script.google.com/macros/s/AKfycbyu3rnmGsiDhjeLKOZISon2GKnZPCVy31v9YsC3NDQGsYX8QtcLf09N9_6XQqJ6ymgS/exec";
+        // ★★★ 請將下面引號內的網址，替換成您剛剛最新部署的 API 網址 ★★★
+        const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        let logisticsData = [];
+        let logisticsData = []; // 存放從盤點總表抓來的資料
         let currentHotel = "";
         let currentDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        let activeDeptForSign = ""; // 紀錄現在正在簽名的是哪個部門
 
         // 畫布設定
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
         const clientCtx = clientCanvas.getContext('2d');
         const driverCtx = driverCanvas.getContext('2d');
-        let paintingClient = false, paintingDriver = false;
-
+        
         async function init() {
             // 從網址抓取 ?hotel=飯店名稱
             const urlParams = new URLSearchParams(window.location.search);
@@ -88,55 +84,99 @@
 
             if (!currentHotel) {
                 document.getElementById('hotelTitle').innerText = "連結無效";
-                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-red-500 font-bold text-xl">請使用專屬飯店連結進入此系統！<br><span class="text-sm text-gray-400">例如: ?hotel=秝芯</span></div>';
+                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-red-500 font-bold text-xl">請使用專屬飯店連結進入此系統！<br><span class="text-sm text-gray-400">例如: ?hotel=H2O</span></div>';
                 return;
             }
 
             document.getElementById('hotelTitle').innerText = currentHotel + " 點收系統";
 
             try {
+                // 呼叫大腦，去盤點總表抓資料
                 const res = await fetch(`${API_URL}?action=getLogisticsData&hotel=${currentHotel}&date=${currentDate}&t=${new Date().getTime()}`);
                 logisticsData = await res.json();
 
                 if (logisticsData.length === 0) {
-                    document.getElementById('itemsList').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">今日尚無出貨資料，或老闆尚未放行！</div>';
+                    document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">今日阿姨尚未盤點，或無相關資料！</div>';
                     return;
                 }
 
-                renderList();
-                document.getElementById('checkoutBtnBox').classList.remove('hidden');
+                renderDepartments();
 
             } catch (err) {
-                document.getElementById('itemsList').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：${err.message}</div>`;
+                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：${err.message}</div>`;
             }
         }
 
-        function renderList() {
-            let html = "";
-            logisticsData.forEach((item, index) => {
-                html += `
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <span class="text-sm font-bold text-blue-500 block mb-1">${item.deptName}</span>
-                            <span class="text-2xl font-black text-gray-900">${item.itemName}</span>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-sm text-gray-500 block">百麒出貨數量</span>
-                            <span class="text-2xl font-bold text-gray-400">${item.originalQty}</span>
-                        </div>
-                    </div>
+        // 把資料依據部門 (deptName) 分組，然後渲染出來
+        function renderDepartments() {
+            // 先找出有哪些部門
+            const depts = [...new Set(logisticsData.map(item => item.deptName))];
+            let containerHtml = "";
+
+            depts.forEach(dept => {
+                const itemsInDept = logisticsData.filter(item => item.deptName === dept);
+                
+                // 畫出部門標題區塊
+                containerHtml += `
+                <div id="dept-block-${dept}" class="bg-white p-4 rounded-2xl shadow-md border-t-4 border-blue-600 mb-8">
+                    <h2 class="text-2xl font-black text-blue-900 mb-4 border-b pb-2">📂 ${dept}</h2>
+                    <div class="space-y-4 mb-6">
+                `;
+
+                // 畫出該部門底下的所有品項
+                itemsInDept.forEach((item, index) => {
+                    // 給每個輸入框一個獨一無二的 ID，方便抓資料
+                    const uniqueId = `${dept}-${index}`; 
                     
-                    <div class="mt-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                    containerHtml += `
+                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
                         <div class="flex justify-between items-center mb-2">
-                            <label class="font-bold text-gray-700">實收數量：</label>
-                            <input type="number" id="actual-${index}" value="${item.originalQty}" class="w-24 p-2 text-right font-black text-2xl border-b-2 border-green-500 bg-white outline-none text-green-700 rounded shadow-sm">
+                            <span class="text-2xl font-black text-gray-900">${item.itemName}</span>
+                            <div class="text-right">
+                                <span class="text-xs text-gray-500 block">百麒出貨數量 (盤點量)</span>
+                                <span id="original-${uniqueId}" class="text-xl font-bold text-gray-500">${item.originalQty}</span>
+                            </div>
                         </div>
-                        <input type="text" id="note-${index}" placeholder="實收有異動請填寫備註..." class="w-full p-2 mt-2 border border-gray-200 rounded text-sm bg-white outline-none">
+                        
+                        ${item.note ? `<div class="text-sm text-red-600 bg-red-50 p-2 rounded mb-3">📝 盤點備註：${item.note}</div>` : ''}
+
+                        <div class="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                            <label class="font-bold text-gray-700">實收數量：</label>
+                            <div class="flex items-center gap-2">
+                                <span id="status-${uniqueId}" class="text-lg">✅</span>
+                                <input type="number" id="actual-${uniqueId}" value="${item.originalQty}" 
+                                    oninput="checkMatch('${uniqueId}')"
+                                    class="w-20 p-1 text-right font-black text-2xl border-b-2 border-green-500 outline-none text-green-700 rounded">
+                            </div>
+                        </div>
+                        <input type="text" id="note-${uniqueId}" placeholder="實收有異動？司機請寫備註..." class="w-full p-2 mt-2 border border-gray-300 rounded text-sm bg-white outline-none">
+                    </div>`;
+                });
+
+                // 每個部門區塊底下都有自己的簽名送出按鈕
+                containerHtml += `
                     </div>
-                </div>`;
+                    <button onclick="openSignModal('${dept}')" class="w-full p-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-700 flex justify-center items-center gap-2">
+                        <span>✍️</span> 完成【${dept}】核對並簽名
+                    </button>
+                </div>
+                `;
             });
-            document.getElementById('itemsList').innerHTML = html;
+
+            document.getElementById('departmentsContainer').innerHTML = containerHtml;
+        }
+
+        // 動態檢查出貨量與實收量是否相符
+        function checkMatch(uniqueId) {
+            const original = parseInt(document.getElementById(`original-${uniqueId}`).innerText) || 0;
+            const actual = parseInt(document.getElementById(`actual-${uniqueId}`).value) || 0;
+            const statusSpan = document.getElementById(`status-${uniqueId}`);
+            
+            if (original === actual) {
+                statusSpan.innerText = "✅";
+            } else {
+                statusSpan.innerText = "❌";
+            }
         }
 
         // --- 畫布共用邏輯 ---
@@ -162,8 +202,11 @@
 
         function clearCanvas(ctx, canvas) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
 
-        function openSignModal() {
+        function openSignModal(dept) {
+            activeDeptForSign = dept;
+            document.getElementById('modalDeptTitle').innerText = `正在簽收：${dept}`;
             document.getElementById('signModal').classList.remove('hidden');
+            
             requestAnimationFrame(() => {
                 [clientCanvas, driverCanvas].forEach(c => {
                     c.width = c.offsetWidth; c.height = 160;
@@ -171,12 +214,14 @@
                 [clientCtx, driverCtx].forEach(ctx => {
                     ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
                 });
+                clearCanvas(clientCtx, clientCanvas);
+                clearCanvas(driverCtx, driverCanvas);
             });
         }
         function closeSignModal() { document.getElementById('signModal').classList.add('hidden'); }
 
         function submitVerify() {
-            // 檢查是否兩邊都有簽名 (簡單判斷畫布是否被動過)
+            // 檢查是否兩邊都有簽名
             const isClientEmpty = !clientCtx.getImageData(0,0,clientCanvas.width,clientCanvas.height).data.some(channel => channel !== 0);
             const isDriverEmpty = !driverCtx.getImageData(0,0,driverCanvas.width,driverCanvas.height).data.some(channel => channel !== 0);
             
@@ -184,21 +229,23 @@
                 alert("請飯店與司機雙方皆完成簽名！"); return;
             }
 
-            // 收集所有修改後的實收資料
-            let verifyDetails = logisticsData.map((item, index) => {
+            // 只收集「當前簽名部門」的資料
+            const itemsInDept = logisticsData.filter(item => item.deptName === activeDeptForSign);
+            let verifyDetails = itemsInDept.map((item, index) => {
+                const uniqueId = `${activeDeptForSign}-${index}`;
                 return {
-                    deptName: item.deptName,
                     itemName: item.itemName,
                     originalQty: item.originalQty,
-                    actualQty: document.getElementById(`actual-${index}`).value,
-                    price: item.price, // 傳給後台記帳用，前端不顯示
-                    note: document.getElementById(`note-${index}`).value
+                    actualQty: document.getElementById(`actual-${uniqueId}`).value,
+                    clientNote: item.note, // 阿姨寫的備註
+                    driverNote: document.getElementById(`note-${uniqueId}`).value // 司機寫的備註
                 };
             });
 
             const payload = {
-                type: 'logistics', // ★ 告訴統一後台，這筆是點收紀錄
+                type: 'logistics',
                 hotel: currentHotel,
+                deptName: activeDeptForSign, // 告訴後台現在存的是哪個部門
                 date: currentDate,
                 verifyJson: JSON.stringify(verifyDetails),
                 clientSigBase64: clientCanvas.toDataURL(),
@@ -207,13 +254,20 @@
 
             closeSignModal();
             const toast = document.getElementById('toast');
+            toast.innerText = `✅ 【${activeDeptForSign}】已送出存檔！`;
             toast.classList.remove('opacity-0');
             setTimeout(() => toast.classList.add('opacity-0'), 3000);
 
-            // 送出資料後，清空清單表示已完成
-            document.getElementById('itemsList').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-2xl">🎉 今日點收已完成上傳！</div>';
-            document.getElementById('checkoutBtnBox').classList.add('hidden');
+            // 送出成功後，把畫面上這個部門的區塊隱藏起來，表示已完成
+            document.getElementById(`dept-block-${activeDeptForSign}`).style.display = 'none';
+            
+            // 檢查是不是所有部門都簽完了
+            const visibleBlocks = document.querySelectorAll('[id^="dept-block-"]:not([style*="display: none"])');
+            if(visibleBlocks.length === 0) {
+                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-2xl">🎉 今日該飯店所有部門皆已點收完畢！</div>';
+            }
 
+            // 發送給後台大腦
             fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
         }
 
