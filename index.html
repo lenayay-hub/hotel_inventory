@@ -28,16 +28,12 @@
             </button>
         </div>
         
-        <!-- 上方控制區：強制高度一致 (h-14) -->
         <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
-            
-            <!-- 日期選擇 -->
             <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <!-- ★ 終極隱藏箭頭法：利用全透明 select 覆蓋在純文字上方 -->
             <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center overflow-hidden">
                 <div id="hotelDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <select id="hotelSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="document.getElementById('hotelDisplay').innerText = this.options[this.selectedIndex].text; renderItems()">
@@ -45,7 +41,6 @@
                 </select>
             </div>
             
-            <!-- 搜尋框 -->
             <div class="relative w-full h-14">
                 <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
                 <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="搜尋飯店名稱..." oninput="renderItems()">
@@ -69,7 +64,6 @@
         </button>
     </div>
 
-    <!-- 截圖預覽畫面 -->
     <div id="previewScreen" class="hidden fixed inset-0 bg-white z-[9999] overflow-y-auto">
         <div class="p-4 flex justify-between items-center border-b border-gray-200 bg-gray-50">
             <button onclick="hidePreview()" class="text-blue-600 font-bold text-lg px-2 py-1">← 返回編輯</button>
@@ -78,10 +72,8 @@
         <div id="previewContent" class="p-6 max-w-md mx-auto bg-white min-h-screen"></div>
     </div>
 
-    <!-- 簽名視窗 -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
-            <!-- ★ 加入清除重寫的文字按鈕，避免簽錯無法改 -->
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg font-bold text-gray-800">請在下方簽名</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 active:bg-red-50 rounded">清除重寫</button>
@@ -134,7 +126,6 @@
 
                 if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到飯店資料");
                 
-                // ★ 寫入雲端紀錄，但保留手機本地的「簽名圖片」
                 if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
@@ -227,7 +218,6 @@
                 const savedNote = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
                 const hasSign = userInputs[dateStr]?.[d.hotel]?.[d.item]?.signature;
                 
-                // ★ 依照有沒有簽過名，改變按鈕的外觀與文字
                 const btnClass = hasSign ? 'bg-green-600' : 'bg-blue-600';
                 const btnText = hasSign ? '✅ 已簽名 (點擊查看/修改)' : '簽名確認';
                 
@@ -316,7 +306,6 @@
             document.getElementById('editScreen').classList.remove('hidden');
         }
 
-        // 畫布操作
         function start(e) { painting = true; draw(e); }
         function draw(e) {
             if(!painting) return;
@@ -347,7 +336,6 @@
                 ctx.lineCap = 'round';
                 ctx.strokeStyle = '#000';
                 
-                // ★ 每次打開先清空，接著讀取有沒有暫存的簽名圖片
                 clearCanvas();
                 const dateStr = document.getElementById('datePicker').value;
                 const savedSign = userInputs[dateStr]?.[hotel]?.[item]?.signature;
@@ -377,7 +365,6 @@
                 return;
             }
 
-            // ★ 傳送時，將畫布轉換成圖片並記錄在手機記憶體中
             handleInput(dateStr, activeHotel, activeItem, 'signature', canvas.toDataURL());
 
             const payload = { 
@@ -392,15 +379,14 @@
             closeSign();
             showToast(`✅ ${activeItem} 已送出`);
             
-            // 重繪清單，讓按鈕變綠色
+            // 只有重繪按鈕狀態，不會強制重新載入整個網頁資料
             renderItems();
 
+            // 在背景默默把資料送給 Google，完全不打擾使用者
             fetch(`${API_URL}?t=${new Date().getTime()}`, { 
                 method: 'POST', 
                 mode: 'no-cors', 
                 body: JSON.stringify(payload) 
-            }).then(() => {
-                setTimeout(init, 1500);
             });
         }
 
