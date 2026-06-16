@@ -86,6 +86,7 @@
     </div>
 
     <script>
+        // ★ 最新填入的百麒後台 API 網址
         const API_URL = "https://script.google.com/macros/s/AKfycbyu3rnmGsiDhjeLKOZISon2GKnZPCVy31v9YsC3NDQGsYX8QtcLf09N9_6XQqJ6ymgS/exec";
         
         let masterData = [];
@@ -107,7 +108,7 @@
             listDiv.innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>';
             
             try {
-                // ★ 更改：呼叫專屬的盤點資料接口 getInventoryData
+                // 呼叫專屬的盤點資料接口
                 const noCacheUrl = `${API_URL}?action=getInventoryData&t=${new Date().getTime()}`;
                 const res = await fetch(noCacheUrl);
                 
@@ -125,7 +126,7 @@
                     throw new Error("回傳格式不正確");
                 }
 
-                if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到飯店資料");
+                if (masterData.length === 0) throw new Error("「自主配置本」內沒有找到飯店資料");
                 
                 if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
@@ -189,4 +190,208 @@
             return ((today - selected) / 86400000) > 2;
         }
 
-        function handl
+        function handleInput(date, hotel, item, field, value) {
+            if (!userInputs[date]) userInputs[date] = {};
+            if (!userInputs[date][hotel]) userInputs[date][hotel] = {};
+            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '', signature: '' };
+            userInputs[date][hotel][item][field] = value;
+        }
+
+        function renderItems() {
+            const dateStr = document.getElementById('datePicker').value;
+            const dropdownHotel = document.getElementById('hotelSelect').value;
+            const search = document.getElementById('searchInput').value.trim().toLowerCase();
+            const locked = isLocked();
+            
+            let filteredData = masterData;
+            if (search) {
+                filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
+            } else {
+                filteredData = masterData.filter(d => d.hotel === dropdownHotel);
+            }
+            
+            if (filteredData.length === 0) {
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">無符合資料</div>';
+                return;
+            }
+
+            document.getElementById('itemsList').innerHTML = filteredData.map(d => {
+                const savedCount = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
+                const savedNote = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
+                const hasSign = userInputs[dateStr]?.[d.hotel]?.[d.item]?.signature;
+                
+                const btnClass = hasSign ? 'bg-green-600' : 'bg-blue-600';
+                const btnText = hasSign ? '✅ 已簽名 (點擊查看/修改)' : '簽名確認';
+                
+                return `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 ${locked ? 'locked-card' : ''}">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex flex-col">
+                            ${search ? `<span class="text-sm text-blue-500 font-bold mb-1">${d.hotel}</span>` : ''}
+                            <span class="font-bold text-2xl text-gray-900">${d.item}</span>
+                        </div>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" 
+                            oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" 
+                            value="${savedCount}" 
+                            ${locked ? 'disabled' : ''}
+                            class="w-20 p-1 text-right font-black text-2xl border-b-2 border-blue-400 bg-transparent outline-none text-blue-600" placeholder="0">
+                    </div>
+                    <input type="text" 
+                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" 
+                        value="${savedNote}" 
+                        ${locked ? 'disabled' : ''}
+                        class="w-full p-1.5 mb-2 border border-gray-200 rounded text-sm bg-gray-50 outline-none" placeholder="備註...">
+                    <button onclick="openSign('${d.hotel}', '${d.item}')" ${locked ? 'disabled' : ''} class="w-full py-1.5 ${btnClass} text-white rounded font-bold text-sm shadow-sm active:opacity-80 transition-colors">${btnText}</button>
+                </div>
+            `}).join('');
+        }
+
+        function addNewItem() {
+            const val = document.getElementById('newItemInput').value;
+            const hotel = document.getElementById('hotelSelect').value;
+            if(val && hotel) {
+                masterData.push({hotel: hotel, item: val});
+                document.getElementById('newItemInput').value = "";
+                renderItems();
+            }
+        }
+
+        function showPreview() {
+            const hotel = document.getElementById('hotelSelect').value;
+            const dateStr = document.getElementById('datePicker').value;
+            const displayDate = document.getElementById('dateDisplay').innerText;
+            
+            let html = `
+                <div class="text-center mb-6 pb-4 border-b-2 border-black">
+                    <h2 class="text-3xl font-black text-gray-900 mb-1">${hotel}</h2>
+                    <p class="text-lg text-gray-600 font-bold">${displayDate} 盤點表</p>
+                </div>
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b-2 border-gray-800 text-gray-700">
+                            <th class="py-2 text-lg">品項</th>
+                            <th class="py-2 text-lg text-right">數量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            let hasData = false;
+            masterData.filter(d => d.hotel === hotel).forEach(d => {
+                const count = userInputs[dateStr]?.[hotel]?.[d.item]?.count;
+                const note = userInputs[dateStr]?.[hotel]?.[d.item]?.note;
+                
+                if (count && count !== "0" && String(count).trim() !== "") {
+                    hasData = true;
+                    html += `
+                        <tr class="border-b border-gray-200">
+                            <td class="py-4">
+                                <span class="font-bold text-2xl text-gray-900">${d.item}</span>
+                                ${note ? `<div class="text-sm text-gray-500 mt-1">📝 備註：${note}</div>` : ''}
+                            </td>
+                            <td class="py-4 font-black text-3xl text-right text-blue-700">${count}</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            if (!hasData) html += `<tr><td colspan="2" class="py-10 text-center text-gray-400 text-lg">無盤點資料</td></tr>`;
+            html += `</tbody></table>`;
+            
+            document.getElementById('previewContent').innerHTML = html;
+            document.getElementById('editScreen').classList.add('hidden');
+            document.getElementById('previewScreen').classList.remove('hidden');
+        }
+
+        function hidePreview() {
+            document.getElementById('previewScreen').classList.add('hidden');
+            document.getElementById('editScreen').classList.remove('hidden');
+        }
+
+        function start(e) { painting = true; draw(e); }
+        function draw(e) {
+            if(!painting) return;
+            e.preventDefault(); 
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
+        }
+        function stop() { painting = false; ctx.beginPath(); }
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+        canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
+        canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('mouseup', stop); canvas.addEventListener('touchend', stop);
+
+        function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
+
+        function openSign(hotel, item) { 
+            activeHotel = hotel;
+            activeItem = item; 
+            document.getElementById('signModal').classList.remove('hidden'); 
+            
+            requestAnimationFrame(() => {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = 220;
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000';
+                
+                clearCanvas();
+                const dateStr = document.getElementById('datePicker').value;
+                const savedSign = userInputs[dateStr]?.[hotel]?.[item]?.signature;
+                
+                if (savedSign) {
+                    const img = new Image();
+                    img.onload = () => ctx.drawImage(img, 0, 0);
+                    img.src = savedSign;
+                }
+            });
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => { toast.classList.add('opacity-0'); }, 2000);
+        }
+
+        function submitData() {
+            const dateStr = document.getElementById('datePicker').value;
+            const countVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.count || 0;
+            const noteVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.note || '';
+            
+            if(!countVal || countVal === "0" || String(countVal).trim() === "") {
+                alert("請先填寫數量！");
+                return;
+            }
+
+            handleInput(dateStr, activeHotel, activeItem, 'signature', canvas.toDataURL());
+
+            const payload = { 
+                type: 'inventory',
+                date: dateStr,
+                hotel: activeHotel,
+                item: activeItem, 
+                count: countVal, 
+                note: noteVal, 
+                timestamp: new Date().toLocaleString() 
+            };
+            
+            closeSign();
+            showToast(`✅ ${activeItem} 已送出`);
+            
+            renderItems();
+
+            fetch(`${API_URL}?t=${new Date().getTime()}`, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify(payload) 
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
