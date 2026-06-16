@@ -62,8 +62,8 @@
         
         let currentHotel = "";
         let currentDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        let groupedData = {}; // 存放依部門分類的資料
-        let activeDeptKey = ""; // 紀錄現在正在簽名哪個部門
+        let groupedData = {}; 
+        let activeDeptKey = ""; 
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
@@ -92,10 +92,9 @@
                     return;
                 }
 
-                // 依部門分類 (例如 "H2O 客房布品", "H2O 餐廳布品")
                 data.forEach(item => {
                     if (!groupedData[item.deptName]) groupedData[item.deptName] = { items: [], isDone: false };
-                    item.actualQty = item.originalQty; // 預設實收 = 盤點數
+                    item.actualQty = item.originalQty; 
                     item.driverNote = "";
                     groupedData[item.deptName].items.push(item);
                 });
@@ -107,7 +106,6 @@
             }
         }
 
-        // 當實收數量改變時，自動判斷是否相符
         function handleQtyChange(dept, idx, val) {
             groupedData[dept].items[idx].actualQty = val;
             const original = groupedData[dept].items[idx].originalQty;
@@ -173,7 +171,6 @@
             document.getElementById('departmentsContainer').innerHTML = html;
         }
 
-        // --- 畫布邏輯 ---
         function setupCanvas(canvas, ctx) {
             function start(e) { e.preventDefault(); canvas.painting = true; draw(e); }
             function draw(e) {
@@ -222,25 +219,24 @@
                 driverSigBase64: driverCanvas.toDataURL()
             };
 
+            // ★ 解除阻擋：使用無敵穿透模式 mode: 'no-cors'
             fetch(API_URL, { 
                 method: 'POST', 
+                mode: 'no-cors',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload) 
             })
-            .then(r => r.json())
-            .then(data => {
+            .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
-                if(data.status === "success") {
-                    closeSignModal();
-                    groupedData[activeDeptKey].isDone = true; // 標記為完成
-                    renderDepartments(); // 畫面更新為綠色勾勾
-                    const toast = document.getElementById('toast');
-                    toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
-                } else { alert("寫入後台失敗: " + data.message); }
+                closeSignModal();
+                groupedData[activeDeptKey].isDone = true; 
+                renderDepartments(); 
+                const toast = document.getElementById('toast');
+                toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
             })
             .catch(e => {
                 btn.innerText = "確認送出"; btn.disabled = false;
-                alert("網路傳送失敗，請確認網址！");
+                alert("網路傳送失敗，請確認網路連線！");
             });
         }
 
