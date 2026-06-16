@@ -81,7 +81,7 @@
     </div>
 
     <script>
-        // ★★★ 請將下面引號內的網址，替換成您剛剛最新部署的 API 網址 ★★★
+        // ★★★ 已帶入您最新的 API 網址 ★★★
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let masterData = []; // 存放基礎設定抓來的範本
@@ -116,26 +116,28 @@
                     throw new Error("回傳格式不正確");
                 }
 
-                if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到資料");
+                if (masterData.length === 0) throw new Error("後台試算表「基礎設定」或「自主配置本」內沒有找到資料");
                 
                 // 還原已經盤點過的資料狀態
                 if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true }; // 標記已簽名過
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true };
                     });
                 }
 
                 // 抓取所有唯一的「飯店+部門」選項
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
-                filterHotels(); // 觸發下拉選單渲染
+                
+                // 初始化時，直接調用過濾器渲染第一筆
+                filterHotels(); 
                 
             } catch (error) {
                 listDiv.innerHTML = `
                     <div class="text-red-500 mb-2 text-center mt-6">讀取失敗 😭</div>
                     <div class="text-sm text-gray-500 px-4 text-center">${error.message}</div>
-                    <div class="text-center text-xs text-gray-400 mt-2">請確認 API_URL 是否有填寫正確</div>
+                    <div class="text-center text-xs text-gray-400 mt-2">請確認 API_URL 是否填寫正確，且後台已有設定品項。</div>
                     <div class="text-center"><button onclick="init()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">點我重試</button></div>
                 `;
             }
@@ -233,7 +235,6 @@
             const val = document.getElementById('newItemInput').value.trim();
             const currentCategory = document.getElementById('hotelSelect').value;
             if(val && currentCategory) {
-                // 檢查是否重複
                 if (!masterData.some(d => d.hotel === currentCategory && d.item === val)) {
                     masterData.push({hotel: currentCategory, item: val});
                     document.getElementById('newItemInput').value = "";
@@ -297,18 +298,350 @@
                 return;
             }
 
-            // 標記為已簽名
             handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
             const currentTimestamp = new Date().toLocaleString();
 
             const payload = { 
                 type: 'inventory',
                 date: dateStr,
-                hotel: activeCategory, // 傳送如 "H2O 客房布品"
+                hotel: activeCategory, 
                 item: activeItem, 
                 count: countVal, 
                 note: noteVal, 
-                timestamp: currentTimestamp // 阿姨的簽名時間
+                timestamp: currentTimestamp 
+            };
+            
+            closeSign();
+            showToast(`✅ ${activeItem} 數量已送出`);
+            
+            renderItems();
+
+            fetch(API_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify(payload) 
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
+
+
+```
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>飯店布品盤點系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; touch-action: manipulation; }
+        .main-container { max-width: 500px; margin: 0 auto; }
+        input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+        #signCanvas { display: block; width: 100%; height: 220px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
+        .locked-card { opacity: 0.5; pointer-events: none; filter: grayscale(50%); }
+    </style>
+</head>
+<body class="p-3 pb-32 relative">
+    
+    <!-- 成功提示框 -->
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
+        已成功送出！
+    </div>
+
+    <div id="editScreen" class="main-container">
+        
+        <div class="flex justify-between items-center mb-4 mt-2 px-1">
+            <h1 class="text-2xl font-bold text-gray-800">布品盤點系統</h1>
+            <button onclick="init()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-bold text-sm shadow-sm active:bg-blue-200 flex items-center gap-1">
+                <span>🔄</span> 雲端同步
+            </button>
+        </div>
+        
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
+            <!-- 日期選擇 -->
+            <div class="relative w-full bg-gray-100 rounded-lg h-14 flex items-center justify-center border border-gray-200">
+                <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
+                <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
+            </div>
+
+            <!-- 搜尋過濾框 -->
+            <div class="relative w-full h-14">
+                <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
+                <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="輸入關鍵字找飯店或部門..." oninput="filterHotels()">
+            </div>
+
+            <!-- 飯店及部門選擇 -->
+            <div class="relative w-full bg-blue-50 border border-blue-200 rounded-lg h-14 flex items-center justify-center overflow-hidden">
+                <div id="hotelDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-blue-800">載入中...</div>
+                <select id="hotelSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="document.getElementById('hotelDisplay').innerText = this.options[this.selectedIndex].text; renderItems()">
+                    <option value="">載入中...</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 品項清單 -->
+        <div id="itemsList" class="space-y-3">
+            <div id="loadingStatus" class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>
+        </div>
+
+        <!-- 新增臨時品項 -->
+        <div class="bg-white p-4 rounded-xl border-2 border-dashed border-gray-300 mt-5 mb-5">
+            <h2 class="font-bold text-sm mb-2 text-gray-700">清單上沒有？新增臨時品項</h2>
+            <div class="flex gap-2">
+                <input id="newItemInput" class="flex-1 p-2 border rounded-md text-base" placeholder="輸入布品名稱">
+                <button onclick="addNewItem()" class="p-2 bg-green-600 text-white rounded-md font-bold text-sm px-4">新增</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 簽名板 Modal -->
+    <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
+        <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-lg font-bold text-gray-800">確認數量無誤並簽名</h2>
+                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 active:bg-red-50 rounded">清除重寫</button>
+            </div>
+            <canvas id="signCanvas"></canvas>
+            <div class="mt-4">
+                <button onclick="submitData()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-800">確定傳送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ★★★ 已帶入您最新的 API 網址 ★★★
+        const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
+        
+        let masterData = []; // 存放基礎設定抓來的範本
+        let userInputs = {}; // 存放使用者輸入的數量與狀態
+        let allCategories = []; // 存放所有唯一的「飯店+部門」選項
+        
+        let activeCategory = ""; 
+        let activeItem = "";
+        
+        const canvas = document.getElementById('signCanvas');
+        const ctx = canvas.getContext('2d');
+        let painting = false;
+
+        function getLocalDateString(dateObj) {
+            return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+
+        async function init() {
+            setupDateLimits();
+            const listDiv = document.getElementById('itemsList');
+            listDiv.innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">正在從百麒大腦同步資料...</div>';
+            
+            try {
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                if (!res.ok) throw new Error(`連線錯誤狀態碼: ${res.status}`);
+                
+                const data = await res.json();
+                
+                if (data.template && Array.isArray(data.template)) {
+                    masterData = data.template;
+                } else {
+                    throw new Error("回傳格式不正確");
+                }
+
+                if (masterData.length === 0) throw new Error("後台試算表「基礎設定」或「自主配置本」內沒有找到資料");
+                
+                // 還原已經盤點過的資料狀態
+                if (data.records && Array.isArray(data.records)) {
+                    data.records.forEach(r => {
+                        if(!userInputs[r.date]) userInputs[r.date] = {};
+                        if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true };
+                    });
+                }
+
+                // 抓取所有唯一的「飯店+部門」選項
+                allCategories = [...new Set(masterData.map(d => d.hotel))];
+                
+                // 初始化時，直接調用過濾器渲染第一筆
+                filterHotels(); 
+                
+            } catch (error) {
+                listDiv.innerHTML = `
+                    <div class="text-red-500 mb-2 text-center mt-6">讀取失敗 😭</div>
+                    <div class="text-sm text-gray-500 px-4 text-center">${error.message}</div>
+                    <div class="text-center text-xs text-gray-400 mt-2">請確認 API_URL 是否填寫正確，且後台已有設定品項。</div>
+                    <div class="text-center"><button onclick="init()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">點我重試</button></div>
+                `;
+            }
+        }
+
+        function setupDateLimits() {
+            const today = new Date();
+            const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0); 
+            
+            const dp = document.getElementById('datePicker');
+            dp.min = getLocalDateString(prevMonth);
+            dp.max = getLocalDateString(nextMonth);
+            dp.value = getLocalDateString(today);
+            updateDateDisplay();
+        }
+
+        function dateChanged() { updateDateDisplay(); renderItems(); }
+        function updateDateDisplay() {
+            const dateVal = document.getElementById('datePicker').value;
+            if(!dateVal) return;
+            const d = new Date(dateVal);
+            document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        }
+
+        // 搜尋過濾功能
+        function filterHotels() {
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            const filtered = allCategories.filter(c => c.toLowerCase().includes(keyword));
+            
+            const hotelSelect = document.getElementById('hotelSelect');
+            const hotelDisplay = document.getElementById('hotelDisplay');
+            
+            if (filtered.length > 0) {
+                hotelSelect.innerHTML = filtered.map(c => `<option value="${c}">${c}</option>`).join('');
+                hotelSelect.value = filtered[0]; 
+                hotelDisplay.innerText = filtered[0];
+            } else {
+                hotelSelect.innerHTML = '<option value="">無符合結果</option>';
+                hotelDisplay.innerText = "無符合結果";
+            }
+            renderItems();
+        }
+
+        function handleInput(date, category, item, field, value) {
+            if (!userInputs[date]) userInputs[date] = {};
+            if (!userInputs[date][category]) userInputs[date][category] = {};
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false };
+            userInputs[date][category][item][field] = value;
+        }
+
+        function renderItems() {
+            const dateStr = document.getElementById('datePicker').value;
+            const currentCategory = document.getElementById('hotelSelect').value;
+            
+            if (!currentCategory) {
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">請輸入關鍵字搜尋飯店</div>';
+                return;
+            }
+
+            const filteredData = masterData.filter(d => d.hotel === currentCategory);
+            
+            if (filteredData.length === 0) {
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">該部門無布品資料</div>';
+                return;
+            }
+
+            document.getElementById('itemsList').innerHTML = filteredData.map(d => {
+                const savedCount = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
+                const savedNote = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
+                const isSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned;
+                
+                const btnClass = isSigned ? 'bg-green-600' : 'bg-blue-600';
+                const btnText = isSigned ? '✅ 已盤點送出 (點擊可修改)' : '簽名並送出';
+                
+                return `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-2xl text-gray-900">${d.item}</span>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" 
+                            oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" 
+                            value="${savedCount}" 
+                            class="w-20 p-1 text-right font-black text-2xl border-b-2 border-blue-400 bg-transparent outline-none text-blue-600" placeholder="0">
+                    </div>
+                    <input type="text" 
+                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" 
+                        value="${savedNote}" 
+                        class="w-full p-2 mb-3 border border-gray-200 rounded-lg text-sm bg-gray-50 outline-none" placeholder="有破損或短少？請寫備註...">
+                    <button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-2 ${btnClass} text-white rounded-lg font-bold text-base shadow-sm active:opacity-80 transition-colors">${btnText}</button>
+                </div>
+            `}).join('');
+        }
+
+        function addNewItem() {
+            const val = document.getElementById('newItemInput').value.trim();
+            const currentCategory = document.getElementById('hotelSelect').value;
+            if(val && currentCategory) {
+                if (!masterData.some(d => d.hotel === currentCategory && d.item === val)) {
+                    masterData.push({hotel: currentCategory, item: val});
+                    document.getElementById('newItemInput').value = "";
+                    renderItems();
+                } else {
+                    alert("這個品項已經在清單中囉！");
+                }
+            } else {
+                alert("請先選擇飯店部門，並輸入布品名稱！");
+            }
+        }
+
+        // 畫布邏輯
+        function start(e) { painting = true; draw(e); }
+        function draw(e) {
+            if(!painting) return;
+            e.preventDefault(); 
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
+        }
+        function stop() { painting = false; ctx.beginPath(); }
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+        canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
+        canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('mouseup', stop); canvas.addEventListener('touchend', stop);
+
+        function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
+
+        function openSign(category, item) { 
+            activeCategory = category;
+            activeItem = item; 
+            document.getElementById('signModal').classList.remove('hidden'); 
+            
+            requestAnimationFrame(() => {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = 220;
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000';
+                clearCanvas();
+            });
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => { toast.classList.add('opacity-0'); }, 2000);
+        }
+
+        function submitData() {
+            const dateStr = document.getElementById('datePicker').value;
+            const countVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.count || 0;
+            const noteVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.note || '';
+            
+            if(!countVal || countVal === "0" || String(countVal).trim() === "") {
+                alert("請先填寫盤點數量！");
+                return;
+            }
+
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
+            const currentTimestamp = new Date().toLocaleString();
+
+            const payload = { 
+                type: 'inventory',
+                date: dateStr,
+                hotel: activeCategory, 
+                item: activeItem, 
+                count: countVal, 
+                note: noteVal, 
+                timestamp: currentTimestamp 
             };
             
             closeSign();
