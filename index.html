@@ -28,17 +28,19 @@
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <select id="hotelSelect" class="w-full bg-gray-200 rounded-lg font-bold text-xl py-3 px-4 outline-none text-center appearance-none" onchange="renderItems()"></select>
+            <!-- ★ 加入了預設的「請選擇」選項，避免空白 -->
+            <select id="hotelSelect" class="w-full bg-gray-200 rounded-lg font-bold text-xl py-3 px-4 outline-none text-center appearance-none" onchange="renderItems()">
+                <option value="">載入中...</option>
+            </select>
             
             <div class="relative w-full">
                 <span class="absolute left-3 top-3.5 text-gray-400 text-xl">🔍</span>
-                <!-- ★ 這裡改為搜尋飯店名稱 -->
                 <input id="searchInput" class="w-full border border-gray-300 rounded-lg text-lg py-3 pl-10 pr-4 outline-none" placeholder="搜尋飯店名稱..." oninput="renderItems()">
             </div>
         </div>
 
         <div id="itemsList" class="space-y-3">
-            <div class="text-center py-10 text-gray-500 font-bold text-lg">資料載入中...</div>
+            <div id="loadingStatus" class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>
         </div>
 
         <div class="bg-white p-4 rounded-xl border-2 border-dashed border-gray-300 mt-5 mb-5">
@@ -79,7 +81,7 @@
         
         let masterData = [];
         let userInputs = {}; 
-        let activeHotel = ""; // ★ 獨立記錄當下正在簽名的是哪間飯店
+        let activeHotel = ""; 
         let activeItem = "";
         
         const canvas = document.getElementById('signCanvas');
@@ -88,15 +90,34 @@
 
         async function init() {
             setupDateLimits();
+            const statusDiv = document.getElementById('loadingStatus');
             try {
                 const res = await fetch(`${API_URL}?action=getData`);
+                
+                // ★ 更強大的錯誤捕捉
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                
                 const data = await res.json();
                 
-                // ★ 防呆：同時支援新版(data.template)與舊版(data array)的資料格式
-                masterData = data.template || (Array.isArray(data) ? data : []);
+                // ★ 終極資料解析：不管後台給什麼格式，都盡力轉成陣列
+                if (data.template && Array.isArray(data.template)) {
+                    masterData = data.template;
+                } else if (data.data && Array.isArray(data.data)) {
+                    masterData = data.data;
+                } else if (Array.isArray(data)) {
+                    masterData = data;
+                } else {
+                    throw new Error("試算表回傳的格式不正確！");
+                }
+
+                if (masterData.length === 0) {
+                     throw new Error("試算表『基礎設定』分頁沒有任何飯店資料！");
+                }
                 
                 userInputs = {};
-                if (data.records) {
+                if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
@@ -106,13 +127,22 @@
 
                 const hotels = [...new Set(masterData.map(d => d.hotel))];
                 const hotelSelect = document.getElementById('hotelSelect');
-                hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
                 
-                if (hotels.length > 0) hotelSelect.value = hotels[0]; // 預設選第一間
+                if (hotels.length > 0) {
+                    hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
+                    hotelSelect.value = hotels[0]; 
+                } else {
+                    hotelSelect.innerHTML = `<option value="">沒有飯店選項</option>`;
+                }
                 
                 renderItems();
             } catch (error) {
-                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-red-500 font-bold">讀取失敗，請確認網路或重新整理</div>';
+                console.error("載入失敗詳細原因:", error);
+                statusDiv.innerHTML = `
+                    <div class="text-red-500 mb-2">無法載入資料 😭</div>
+                    <div class="text-sm text-gray-500 break-words px-4">原因: ${error.message}</div>
+                    <button onclick="init()" class="mt-4 px-4 py-2 bg-gray-200 rounded-lg text-sm">點我重試</button>
+                `;
             }
         }
 
@@ -153,7 +183,6 @@
             const search = document.getElementById('searchInput').value.trim().toLowerCase();
             const locked = isLocked();
             
-            // ★ 搜尋邏輯：如果搜尋框有字，找尋飯店名稱相符的；否則以選單為主
             let filteredData = masterData;
             if (search) {
                 filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
@@ -174,7 +203,6 @@
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 ${locked ? 'locked-card' : ''}">
                     <div class="flex justify-between items-center mb-2">
                         <div class="flex flex-col">
-                            <!-- ★ 若使用搜尋，貼心顯示該品項屬於哪間飯店 -->
                             ${search ? `<span class="text-sm text-blue-500 font-bold mb-1">${d.hotel}</span>` : ''}
                             <span class="font-bold text-2xl text-gray-900">${d.item}</span>
                         </div>
@@ -205,7 +233,6 @@
         }
 
         function showPreview() {
-            // 預覽以當前「下拉選單」選擇的飯店為主
             const hotel = document.getElementById('hotelSelect').value;
             const dateStr = document.getElementById('datePicker').value;
             const displayDate = document.getElementById('dateDisplay').innerText;
@@ -274,7 +301,6 @@
 
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
 
-        // ★ 呼叫簽名板時，嚴格綁定對應的飯店名稱與品項
         function openSign(hotel, item) { 
             activeHotel = hotel;
             activeItem = item; 
@@ -298,7 +324,6 @@
 
         function submitData() {
             const dateStr = document.getElementById('datePicker').value;
-            // 讀取剛剛綁定的飯店與品項輸入值
             const countVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.count || 0;
             const noteVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.note || '';
             
@@ -309,7 +334,7 @@
 
             const payload = { 
                 date: dateStr,
-                hotel: activeHotel, // 使用確實綁定的飯店名稱
+                hotel: activeHotel,
                 item: activeItem, 
                 count: countVal, 
                 note: noteVal, 
