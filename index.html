@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>飯店布品盤點</title>
+    <title>飯店布品盤點系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f3f4f6; touch-action: manipulation; }
@@ -15,6 +15,7 @@
 </head>
 <body class="p-3 pb-32 relative">
     
+    <!-- 成功提示框 -->
     <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
         已成功送出！
     </div>
@@ -22,60 +23,54 @@
     <div id="editScreen" class="main-container">
         
         <div class="flex justify-between items-center mb-4 mt-2 px-1">
-            <h1 class="text-2xl font-bold text-gray-800">飯店布品盤點系統</h1>
+            <h1 class="text-2xl font-bold text-gray-800">布品盤點系統</h1>
             <button onclick="init()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-bold text-sm shadow-sm active:bg-blue-200 flex items-center gap-1">
                 <span>🔄</span> 雲端同步
             </button>
         </div>
         
         <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
-            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
+            <!-- 日期選擇 -->
+            <div class="relative w-full bg-gray-100 rounded-lg h-14 flex items-center justify-center border border-gray-200">
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center overflow-hidden">
-                <div id="hotelDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
+            <!-- 搜尋過濾框 -->
+            <div class="relative w-full h-14">
+                <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
+                <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="輸入關鍵字找飯店或部門..." oninput="filterHotels()">
+            </div>
+
+            <!-- 飯店及部門選擇 -->
+            <div class="relative w-full bg-blue-50 border border-blue-200 rounded-lg h-14 flex items-center justify-center overflow-hidden">
+                <div id="hotelDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-blue-800">載入中...</div>
                 <select id="hotelSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="document.getElementById('hotelDisplay').innerText = this.options[this.selectedIndex].text; renderItems()">
                     <option value="">載入中...</option>
                 </select>
             </div>
-            
-            <div class="relative w-full h-14">
-                <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
-                <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="搜尋飯店名稱..." oninput="renderItems()">
-            </div>
         </div>
 
+        <!-- 品項清單 -->
         <div id="itemsList" class="space-y-3">
             <div id="loadingStatus" class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>
         </div>
 
+        <!-- 新增臨時品項 -->
         <div class="bg-white p-4 rounded-xl border-2 border-dashed border-gray-300 mt-5 mb-5">
-            <h2 class="font-bold text-sm mb-2 text-gray-700">新增臨時品項</h2>
+            <h2 class="font-bold text-sm mb-2 text-gray-700">清單上沒有？新增臨時品項</h2>
             <div class="flex gap-2">
-                <input id="newItemInput" class="flex-1 p-2 border rounded-md text-base" placeholder="布品名稱">
+                <input id="newItemInput" class="flex-1 p-2 border rounded-md text-base" placeholder="輸入布品名稱">
                 <button onclick="addNewItem()" class="p-2 bg-green-600 text-white rounded-md font-bold text-sm px-4">新增</button>
             </div>
         </div>
-
-        <button onclick="showPreview()" class="w-full p-4 bg-gray-800 text-white rounded-xl font-bold text-lg shadow-lg mb-8">
-            📸 產生今日截圖預覽
-        </button>
     </div>
 
-    <div id="previewScreen" class="hidden fixed inset-0 bg-white z-[9999] overflow-y-auto">
-        <div class="p-4 flex justify-between items-center border-b border-gray-200 bg-gray-50">
-            <button onclick="hidePreview()" class="text-blue-600 font-bold text-lg px-2 py-1">← 返回編輯</button>
-            <span class="text-gray-400 text-sm">請直接使用手機截圖</span>
-        </div>
-        <div id="previewContent" class="p-6 max-w-md mx-auto bg-white min-h-screen"></div>
-    </div>
-
+    <!-- 簽名板 Modal -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg font-bold text-gray-800">請在下方簽名</h2>
+                <h2 class="text-lg font-bold text-gray-800">確認數量無誤並簽名</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 active:bg-red-50 rounded">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
@@ -86,12 +81,14 @@
     </div>
 
     <script>
-        // ★ 最新填入的百麒後台 API 網址
-        const API_URL = "https://script.google.com/macros/s/AKfycbyu3rnmGsiDhjeLKOZISon2GKnZPCVy31v9YsC3NDQGsYX8QtcLf09N9_6XQqJ6ymgS/exec";
+        // ★★★ 請將下面引號內的網址，替換成您剛剛最新部署的 API 網址 ★★★
+        const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        let masterData = [];
-        let userInputs = {}; 
-        let activeHotel = ""; 
+        let masterData = []; // 存放基礎設定抓來的範本
+        let userInputs = {}; // 存放使用者輸入的數量與狀態
+        let allCategories = []; // 存放所有唯一的「飯店+部門」選項
+        
+        let activeCategory = ""; 
         let activeItem = "";
         
         const canvas = document.getElementById('signCanvas');
@@ -105,59 +102,40 @@
         async function init() {
             setupDateLimits();
             const listDiv = document.getElementById('itemsList');
-            listDiv.innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>';
+            listDiv.innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">正在從百麒大腦同步資料...</div>';
             
             try {
-                // 呼叫專屬的盤點資料接口
-                const noCacheUrl = `${API_URL}?action=getInventoryData&t=${new Date().getTime()}`;
-                const res = await fetch(noCacheUrl);
-                
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                 if (!res.ok) throw new Error(`連線錯誤狀態碼: ${res.status}`);
                 
                 const data = await res.json();
                 
                 if (data.template && Array.isArray(data.template)) {
                     masterData = data.template;
-                } else if (data.data && Array.isArray(data.data)) {
-                    masterData = data.data;
-                } else if (Array.isArray(data)) {
-                    masterData = data;
                 } else {
                     throw new Error("回傳格式不正確");
                 }
 
-                if (masterData.length === 0) throw new Error("「自主配置本」內沒有找到飯店資料");
+                if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到資料");
                 
+                // 還原已經盤點過的資料狀態
                 if (data.records && Array.isArray(data.records)) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        
-                        const existingSign = userInputs[r.date][r.hotel][r.item]?.signature || '';
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, signature: existingSign };
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true }; // 標記已簽名過
                     });
                 }
 
-                const hotels = [...new Set(masterData.map(d => d.hotel))];
-                const hotelSelect = document.getElementById('hotelSelect');
-                const hotelDisplay = document.getElementById('hotelDisplay');
+                // 抓取所有唯一的「飯店+部門」選項
+                allCategories = [...new Set(masterData.map(d => d.hotel))];
+                filterHotels(); // 觸發下拉選單渲染
                 
-                if (hotels.length > 0 && !hotelSelect.value) {
-                    hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
-                    hotelSelect.value = hotels[0]; 
-                    hotelDisplay.innerText = hotels[0];
-                } else if (hotels.length > 0) {
-                    hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
-                    hotelDisplay.innerText = hotelSelect.options[hotelSelect.selectedIndex]?.text || hotels[0];
-                } else {
-                    hotelDisplay.innerText = "無選項";
-                }
-                
-                renderItems();
             } catch (error) {
                 listDiv.innerHTML = `
                     <div class="text-red-500 mb-2 text-center mt-6">讀取失敗 😭</div>
                     <div class="text-sm text-gray-500 px-4 text-center">${error.message}</div>
+                    <div class="text-center text-xs text-gray-400 mt-2">請確認 API_URL 是否有填寫正確</div>
                     <div class="text-center"><button onclick="init()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">點我重試</button></div>
                 `;
             }
@@ -183,131 +161,92 @@
             document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
         }
 
-        function isLocked() {
-            const selected = new Date(document.getElementById('datePicker').value);
-            const today = new Date();
-            today.setHours(0,0,0,0); selected.setHours(0,0,0,0);
-            return ((today - selected) / 86400000) > 2;
+        // 搜尋過濾功能
+        function filterHotels() {
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            const filtered = allCategories.filter(c => c.toLowerCase().includes(keyword));
+            
+            const hotelSelect = document.getElementById('hotelSelect');
+            const hotelDisplay = document.getElementById('hotelDisplay');
+            
+            if (filtered.length > 0) {
+                hotelSelect.innerHTML = filtered.map(c => `<option value="${c}">${c}</option>`).join('');
+                hotelSelect.value = filtered[0]; 
+                hotelDisplay.innerText = filtered[0];
+            } else {
+                hotelSelect.innerHTML = '<option value="">無符合結果</option>';
+                hotelDisplay.innerText = "無符合結果";
+            }
+            renderItems();
         }
 
-        function handleInput(date, hotel, item, field, value) {
+        function handleInput(date, category, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
-            if (!userInputs[date][hotel]) userInputs[date][hotel] = {};
-            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '', signature: '' };
-            userInputs[date][hotel][item][field] = value;
+            if (!userInputs[date][category]) userInputs[date][category] = {};
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false };
+            userInputs[date][category][item][field] = value;
         }
 
         function renderItems() {
             const dateStr = document.getElementById('datePicker').value;
-            const dropdownHotel = document.getElementById('hotelSelect').value;
-            const search = document.getElementById('searchInput').value.trim().toLowerCase();
-            const locked = isLocked();
+            const currentCategory = document.getElementById('hotelSelect').value;
             
-            let filteredData = masterData;
-            if (search) {
-                filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
-            } else {
-                filteredData = masterData.filter(d => d.hotel === dropdownHotel);
+            if (!currentCategory) {
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">請輸入關鍵字搜尋飯店</div>';
+                return;
             }
+
+            const filteredData = masterData.filter(d => d.hotel === currentCategory);
             
             if (filteredData.length === 0) {
-                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">無符合資料</div>';
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">該部門無布品資料</div>';
                 return;
             }
 
             document.getElementById('itemsList').innerHTML = filteredData.map(d => {
                 const savedCount = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
                 const savedNote = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
-                const hasSign = userInputs[dateStr]?.[d.hotel]?.[d.item]?.signature;
+                const isSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned;
                 
-                const btnClass = hasSign ? 'bg-green-600' : 'bg-blue-600';
-                const btnText = hasSign ? '✅ 已簽名 (點擊查看/修改)' : '簽名確認';
+                const btnClass = isSigned ? 'bg-green-600' : 'bg-blue-600';
+                const btnText = isSigned ? '✅ 已盤點送出 (點擊可修改)' : '簽名並送出';
                 
                 return `
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 ${locked ? 'locked-card' : ''}">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                     <div class="flex justify-between items-center mb-2">
-                        <div class="flex flex-col">
-                            ${search ? `<span class="text-sm text-blue-500 font-bold mb-1">${d.hotel}</span>` : ''}
-                            <span class="font-bold text-2xl text-gray-900">${d.item}</span>
-                        </div>
+                        <span class="font-bold text-2xl text-gray-900">${d.item}</span>
                         <input type="text" inputmode="numeric" pattern="[0-9]*" 
                             oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" 
                             value="${savedCount}" 
-                            ${locked ? 'disabled' : ''}
                             class="w-20 p-1 text-right font-black text-2xl border-b-2 border-blue-400 bg-transparent outline-none text-blue-600" placeholder="0">
                     </div>
                     <input type="text" 
                         oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" 
                         value="${savedNote}" 
-                        ${locked ? 'disabled' : ''}
-                        class="w-full p-1.5 mb-2 border border-gray-200 rounded text-sm bg-gray-50 outline-none" placeholder="備註...">
-                    <button onclick="openSign('${d.hotel}', '${d.item}')" ${locked ? 'disabled' : ''} class="w-full py-1.5 ${btnClass} text-white rounded font-bold text-sm shadow-sm active:opacity-80 transition-colors">${btnText}</button>
+                        class="w-full p-2 mb-3 border border-gray-200 rounded-lg text-sm bg-gray-50 outline-none" placeholder="有破損或短少？請寫備註...">
+                    <button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-2 ${btnClass} text-white rounded-lg font-bold text-base shadow-sm active:opacity-80 transition-colors">${btnText}</button>
                 </div>
             `}).join('');
         }
 
         function addNewItem() {
-            const val = document.getElementById('newItemInput').value;
-            const hotel = document.getElementById('hotelSelect').value;
-            if(val && hotel) {
-                masterData.push({hotel: hotel, item: val});
-                document.getElementById('newItemInput').value = "";
-                renderItems();
+            const val = document.getElementById('newItemInput').value.trim();
+            const currentCategory = document.getElementById('hotelSelect').value;
+            if(val && currentCategory) {
+                // 檢查是否重複
+                if (!masterData.some(d => d.hotel === currentCategory && d.item === val)) {
+                    masterData.push({hotel: currentCategory, item: val});
+                    document.getElementById('newItemInput').value = "";
+                    renderItems();
+                } else {
+                    alert("這個品項已經在清單中囉！");
+                }
+            } else {
+                alert("請先選擇飯店部門，並輸入布品名稱！");
             }
         }
 
-        function showPreview() {
-            const hotel = document.getElementById('hotelSelect').value;
-            const dateStr = document.getElementById('datePicker').value;
-            const displayDate = document.getElementById('dateDisplay').innerText;
-            
-            let html = `
-                <div class="text-center mb-6 pb-4 border-b-2 border-black">
-                    <h2 class="text-3xl font-black text-gray-900 mb-1">${hotel}</h2>
-                    <p class="text-lg text-gray-600 font-bold">${displayDate} 盤點表</p>
-                </div>
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="border-b-2 border-gray-800 text-gray-700">
-                            <th class="py-2 text-lg">品項</th>
-                            <th class="py-2 text-lg text-right">數量</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            let hasData = false;
-            masterData.filter(d => d.hotel === hotel).forEach(d => {
-                const count = userInputs[dateStr]?.[hotel]?.[d.item]?.count;
-                const note = userInputs[dateStr]?.[hotel]?.[d.item]?.note;
-                
-                if (count && count !== "0" && String(count).trim() !== "") {
-                    hasData = true;
-                    html += `
-                        <tr class="border-b border-gray-200">
-                            <td class="py-4">
-                                <span class="font-bold text-2xl text-gray-900">${d.item}</span>
-                                ${note ? `<div class="text-sm text-gray-500 mt-1">📝 備註：${note}</div>` : ''}
-                            </td>
-                            <td class="py-4 font-black text-3xl text-right text-blue-700">${count}</td>
-                        </tr>
-                    `;
-                }
-            });
-
-            if (!hasData) html += `<tr><td colspan="2" class="py-10 text-center text-gray-400 text-lg">無盤點資料</td></tr>`;
-            html += `</tbody></table>`;
-            
-            document.getElementById('previewContent').innerHTML = html;
-            document.getElementById('editScreen').classList.add('hidden');
-            document.getElementById('previewScreen').classList.remove('hidden');
-        }
-
-        function hidePreview() {
-            document.getElementById('previewScreen').classList.add('hidden');
-            document.getElementById('editScreen').classList.remove('hidden');
-        }
-
+        // 畫布邏輯
         function start(e) { painting = true; draw(e); }
         function draw(e) {
             if(!painting) return;
@@ -326,8 +265,8 @@
 
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
 
-        function openSign(hotel, item) { 
-            activeHotel = hotel;
+        function openSign(category, item) { 
+            activeCategory = category;
             activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
             
@@ -337,16 +276,7 @@
                 ctx.lineWidth = 4;
                 ctx.lineCap = 'round';
                 ctx.strokeStyle = '#000';
-                
                 clearCanvas();
-                const dateStr = document.getElementById('datePicker').value;
-                const savedSign = userInputs[dateStr]?.[hotel]?.[item]?.signature;
-                
-                if (savedSign) {
-                    const img = new Image();
-                    img.onload = () => ctx.drawImage(img, 0, 0);
-                    img.src = savedSign;
-                }
             });
         }
 
@@ -359,32 +289,34 @@
 
         function submitData() {
             const dateStr = document.getElementById('datePicker').value;
-            const countVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.count || 0;
-            const noteVal = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.note || '';
+            const countVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.count || 0;
+            const noteVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.note || '';
             
             if(!countVal || countVal === "0" || String(countVal).trim() === "") {
-                alert("請先填寫數量！");
+                alert("請先填寫盤點數量！");
                 return;
             }
 
-            handleInput(dateStr, activeHotel, activeItem, 'signature', canvas.toDataURL());
+            // 標記為已簽名
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
+            const currentTimestamp = new Date().toLocaleString();
 
             const payload = { 
                 type: 'inventory',
                 date: dateStr,
-                hotel: activeHotel,
+                hotel: activeCategory, // 傳送如 "H2O 客房布品"
                 item: activeItem, 
                 count: countVal, 
                 note: noteVal, 
-                timestamp: new Date().toLocaleString() 
+                timestamp: currentTimestamp // 阿姨的簽名時間
             };
             
             closeSign();
-            showToast(`✅ ${activeItem} 已送出`);
+            showToast(`✅ ${activeItem} 數量已送出`);
             
             renderItems();
 
-            fetch(`${API_URL}?t=${new Date().getTime()}`, { 
+            fetch(API_URL, { 
                 method: 'POST', 
                 mode: 'no-cors', 
                 body: JSON.stringify(payload) 
