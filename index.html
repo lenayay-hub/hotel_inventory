@@ -32,7 +32,6 @@
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="dateChanged()">
             </div>
             
-            <!-- 搜尋框 -->
             <div class="relative w-full h-14">
                 <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
                 <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none" placeholder="搜尋飯店或部門..." oninput="filterHotels()">
@@ -66,7 +65,7 @@
     </div>
 
     <script>
-        // ★★★ 請替換成最新的 API_URL ★★★
+        // ★★★ 請替換成您最新部署的 API_URL ★★★
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let masterData = []; 
@@ -199,27 +198,26 @@
 
             const payload = { type: 'inventory', date: dateStr, hotel: activeCategory, item: activeItem, count: countVal, note: noteVal, timestamp: new Date().toLocaleString() };
             
-            // ★ 防護網：強制使用 text/plain 防止 Google 阻擋
+            // ★ 解除阻擋：使用無敵穿透模式 mode: 'no-cors'
             fetch(API_URL, { 
                 method: 'POST', 
+                mode: 'no-cors',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload) 
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(() => {
+                // 不管伺服器回傳什麼，只要發送出去就當作成功 (穿透模式無法讀取回傳值)
                 btn.innerText = "確定傳送"; btn.disabled = false;
-                if(data.status === "success") {
-                    handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
-                    closeSign(); renderItems();
-                    const toast = document.getElementById('toast');
-                    toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 2000);
-                } else {
-                    alert("寫入後台失敗: " + data.message);
-                }
+                handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
+                closeSign(); 
+                renderItems();
+                const toast = document.getElementById('toast');
+                toast.classList.remove('opacity-0'); 
+                setTimeout(() => toast.classList.add('opacity-0'), 2000);
             })
             .catch(err => {
                 btn.innerText = "確定傳送"; btn.disabled = false;
-                alert("網路傳送失敗，請確認網址！");
+                alert("網路傳送失敗，請確認網路連線！");
             });
         }
         init();
