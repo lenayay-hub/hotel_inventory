@@ -30,18 +30,22 @@
         </div>
         
         <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
-            <div class="relative w-full bg-gray-200 rounded-lg">
-                <div id="dateDisplay" class="w-full text-center font-bold text-xl py-3 pointer-events-none text-black">載入中...</div>
+            <!-- 完美高度統一：h-14 -->
+            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
+                <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <select id="hotelSelect" class="w-full bg-gray-200 rounded-lg font-bold text-xl py-3 px-4 outline-none text-center appearance-none" onchange="renderItems()">
-                <option value="">載入中...</option>
-            </select>
+            <!-- 強制隱藏下拉箭頭，置中對齊 -->
+            <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
+                <select id="hotelSelect" class="w-full h-full bg-transparent font-bold text-xl px-4 outline-none text-center text-gray-900" style="-webkit-appearance: none; appearance: none;" onchange="renderItems()">
+                    <option value="">載入中...</option>
+                </select>
+            </div>
             
-            <div class="relative w-full">
-                <span class="absolute left-3 top-3.5 text-gray-400 text-xl">🔍</span>
-                <input id="searchInput" class="w-full border border-gray-300 rounded-lg text-lg py-3 pl-10 pr-4 outline-none" placeholder="搜尋飯店名稱..." oninput="renderItems()">
+            <div class="relative w-full h-14">
+                <span class="absolute left-3 top-4 text-gray-400 text-xl">🔍</span>
+                <input id="searchInput" class="w-full h-full border border-gray-300 rounded-lg text-lg pl-10 pr-4 outline-none box-border" placeholder="搜尋飯店名稱..." oninput="renderItems()">
             </div>
         </div>
 
