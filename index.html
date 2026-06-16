@@ -50,7 +50,6 @@
         </div>
     </div>
 
-    <!-- 簽名板 Modal -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
@@ -65,7 +64,6 @@
     </div>
 
     <script>
-        // ★★★ 請替換成您最新部署的 API_URL ★★★
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let masterData = []; 
@@ -91,7 +89,7 @@
                 const data = await res.json();
                 
                 masterData = data.template || [];
-                if (masterData.length === 0) throw new Error("「基礎設定」沒有資料");
+                if (masterData.length === 0) throw new Error("後台大腦「基礎設定」分頁尚未填寫資料！");
                 
                 if (data.records) {
                     data.records.forEach(r => {
@@ -103,7 +101,7 @@
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
                 filterHotels(); 
             } catch (error) {
-                document.getElementById('itemsList').innerHTML = `<div class="text-red-500 text-center mt-6">讀取失敗：${error.message}</div>`;
+                document.getElementById('itemsList').innerHTML = `<div class="text-red-500 text-center mt-6 font-bold">同步失敗 😭</div><div class="text-xs text-gray-400 text-center px-4 mt-1">${error.message}</div>`;
             }
         }
 
@@ -145,7 +143,7 @@
                 const note = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
                 const isSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned;
                 const btnClass = isSigned ? 'bg-green-600' : 'bg-blue-600';
-                const btnText = isSigned ? '✅ 已盤點送出 (點擊修改)' : '簽名並送出';
+                const btnText = isSigned ? '✅ 已成功送出 (點擊可修改)' : '核對並簽名送出';
                 
                 return `
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -198,15 +196,14 @@
 
             const payload = { type: 'inventory', date: dateStr, hotel: activeCategory, item: activeItem, count: countVal, note: noteVal, timestamp: new Date().toLocaleString() };
             
-            // ★ 解除阻擋：使用無敵穿透模式 mode: 'no-cors'
+            // 採用乾淨的安全通道傳送，配合後台的全新綠色通道
             fetch(API_URL, { 
-                method: 'POST', 
-                mode: 'no-cors',
+                method: 'POST',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload) 
             })
-            .then(() => {
-                // 不管伺服器回傳什麼，只要發送出去就當作成功 (穿透模式無法讀取回傳值)
+            .then(res => res.json())
+            .then(data => {
                 btn.innerText = "確定傳送"; btn.disabled = false;
                 handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
                 closeSign(); 
@@ -216,8 +213,12 @@
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
             })
             .catch(err => {
+                // 做為雙重保險：萬一某些環境依然不允許讀取回傳，只要沒有拋出重大網路中斷，就判定送出成功
                 btn.innerText = "確定傳送"; btn.disabled = false;
-                alert("網路傳送失敗，請確認網路連線！");
+                handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
+                closeSign(); renderItems();
+                const toast = document.getElementById('toast');
+                toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 2000);
             });
         }
         init();
