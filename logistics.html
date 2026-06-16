@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>百麒物流 - 飯店點收簽單</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f8fafc; touch-action: manipulation; }
+        .main-container { max-width: 500px; margin: 0 auto; }
+        .sign-canvas { display: block; width: 100%; height: 160px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
+    </style>
+</head>
+<body class="p-3 pb-32 relative">
+
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
+        ✅ 點收簽單已成功送出！
+    </div>
+
+    <div class="main-container">
+        <!-- 頂部標題：鎖定飯店名稱 -->
+        <div class="bg-blue-800 text-white p-5 rounded-2xl shadow-md mb-6 text-center">
+            <h1 id="hotelTitle" class="text-3xl font-black mb-2">載入中...</h1>
+            <p id="dateTitle" class="text-lg font-bold text-blue-200">今日出貨點收單</p>
+        </div>
+
+        <!-- 明細列表 -->
+        <div id="itemsList" class="space-y-4">
+            <div class="text-center py-10 text-gray-500 font-bold text-lg">載入今日放行出貨單中...</div>
+        </div>
+
+        <!-- 底部結算按鈕 -->
+        <div id="checkoutBtnBox" class="hidden mt-8">
+            <button onclick="openSignModal()" class="w-full p-4 bg-green-600 text-white rounded-xl font-bold text-xl shadow-lg active:bg-green-700">
+                📝 確認無誤，進行雙方簽名
+            </button>
+        </div>
+    </div>
+
+    <!-- 雙簽名視窗 -->
+    <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000] overflow-y-auto">
+        <div class="bg-white p-5 rounded-2xl w-full max-w-sm my-auto">
+            
+            <div class="mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-bold text-blue-800">1. 飯店端負責人簽收</h2>
+                    <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除重寫</button>
+                </div>
+                <canvas id="clientCanvas" class="sign-canvas"></canvas>
+            </div>
+
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-bold text-gray-800">2. 百麒物流司機簽收</h2>
+                    <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除重寫</button>
+                </div>
+                <canvas id="driverCanvas" class="sign-canvas"></canvas>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeSignModal()" class="flex-1 p-4 text-lg font-bold bg-gray-200 text-gray-700 rounded-xl">取消</button>
+                <button onclick="submitVerify()" class="flex-1 p-4 text-lg font-bold bg-blue-600 text-white rounded-xl shadow-md">確認送出</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ★ 請填寫您新發佈的 Apps Script URL
+        const API_URL = "https://script.google.com/macros/s/AKfycbyu3rnmGsiDhjeLKOZISon2GKnZPCVy31v9YsC3NDQGsYX8QtcLf09N9_6XQqJ6ymgS/exec";
+        
+        let logisticsData = [];
+        let currentHotel = "";
+        let currentDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+        // 畫布設定
+        const clientCanvas = document.getElementById('clientCanvas');
+        const driverCanvas = document.getElementById('driverCanvas');
+        const clientCtx = clientCanvas.getContext('2d');
+        const driverCtx = driverCanvas.getContext('2d');
+        let paintingClient = false, paintingDriver = false;
+
+        async function init() {
+            // 從網址抓取 ?hotel=飯店名稱
+            const urlParams = new URLSearchParams(window.location.search);
+            currentHotel = urlParams.get('hotel');
+            
+            document.getElementById('dateTitle').innerText = `${currentDate} 出貨點收單`;
+
+            if (!currentHotel) {
+                document.getElementById('hotelTitle').innerText = "連結無效";
+                document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-red-500 font-bold text-xl">請使用專屬飯店連結進入此系統！<br><span class="text-sm text-gray-400">例如: ?hotel=秝芯</span></div>';
+                return;
+            }
+
+            document.getElementById('hotelTitle').innerText = currentHotel + " 點收系統";
+
+            try {
+                const res = await fetch(`${API_URL}?action=getLogisticsData&hotel=${currentHotel}&date=${currentDate}&t=${new Date().getTime()}`);
+                logisticsData = await res.json();
+
+                if (logisticsData.length === 0) {
+                    document.getElementById('itemsList').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">今日尚無出貨資料，或老闆尚未放行！</div>';
+                    return;
+                }
+
+                renderList();
+                document.getElementById('checkoutBtnBox').classList.remove('hidden');
+
+            } catch (err) {
+                document.getElementById('itemsList').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：${err.message}</div>`;
+            }
+        }
+
+        function renderList() {
+            let html = "";
+            logisticsData.forEach((item, index) => {
+                html += `
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="text-sm font-bold text-blue-500 block mb-1">${item.deptName}</span>
+                            <span class="text-2xl font-black text-gray-900">${item.itemName}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-sm text-gray-500 block">百麒出貨數量</span>
+                            <span class="text-2xl font-bold text-gray-400">${item.originalQty}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="font-bold text-gray-700">實收數量：</label>
+                            <input type="number" id="actual-${index}" value="${item.originalQty}" class="w-24 p-2 text-right font-black text-2xl border-b-2 border-green-500 bg-white outline-none text-green-700 rounded shadow-sm">
+                        </div>
+                        <input type="text" id="note-${index}" placeholder="實收有異動請填寫備註..." class="w-full p-2 mt-2 border border-gray-200 rounded text-sm bg-white outline-none">
+                    </div>
+                </div>`;
+            });
+            document.getElementById('itemsList').innerHTML = html;
+        }
+
+        // --- 畫布共用邏輯 ---
+        function setupCanvas(canvas, ctx) {
+            function start(e) { e.preventDefault(); canvas.painting = true; draw(e); }
+            function draw(e) {
+                if(!canvas.painting) return;
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
+            }
+            function stop(e) { e.preventDefault(); canvas.painting = false; ctx.beginPath(); }
+            
+            canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
+            canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
+            canvas.addEventListener('mouseup', stop); canvas.addEventListener('touchend', stop);
+        }
+
+        setupCanvas(clientCanvas, clientCtx);
+        setupCanvas(driverCanvas, driverCtx);
+
+        function clearCanvas(ctx, canvas) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+        function openSignModal() {
+            document.getElementById('signModal').classList.remove('hidden');
+            requestAnimationFrame(() => {
+                [clientCanvas, driverCanvas].forEach(c => {
+                    c.width = c.offsetWidth; c.height = 160;
+                });
+                [clientCtx, driverCtx].forEach(ctx => {
+                    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
+                });
+            });
+        }
+        function closeSignModal() { document.getElementById('signModal').classList.add('hidden'); }
+
+        function submitVerify() {
+            // 檢查是否兩邊都有簽名 (簡單判斷畫布是否被動過)
+            const isClientEmpty = !clientCtx.getImageData(0,0,clientCanvas.width,clientCanvas.height).data.some(channel => channel !== 0);
+            const isDriverEmpty = !driverCtx.getImageData(0,0,driverCanvas.width,driverCanvas.height).data.some(channel => channel !== 0);
+            
+            if (isClientEmpty || isDriverEmpty) {
+                alert("請飯店與司機雙方皆完成簽名！"); return;
+            }
+
+            // 收集所有修改後的實收資料
+            let verifyDetails = logisticsData.map((item, index) => {
+                return {
+                    deptName: item.deptName,
+                    itemName: item.itemName,
+                    originalQty: item.originalQty,
+                    actualQty: document.getElementById(`actual-${index}`).value,
+                    price: item.price, // 傳給後台記帳用，前端不顯示
+                    note: document.getElementById(`note-${index}`).value
+                };
+            });
+
+            const payload = {
+                type: 'logistics', // ★ 告訴統一後台，這筆是點收紀錄
+                hotel: currentHotel,
+                date: currentDate,
+                verifyJson: JSON.stringify(verifyDetails),
+                clientSigBase64: clientCanvas.toDataURL(),
+                driverSigBase64: driverCanvas.toDataURL()
+            };
+
+            closeSignModal();
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0');
+            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+
+            // 送出資料後，清空清單表示已完成
+            document.getElementById('itemsList').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-2xl">🎉 今日點收已完成上傳！</div>';
+            document.getElementById('checkoutBtnBox').classList.add('hidden');
+
+            fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+        }
+
+        init();
+    </script>
+</body>
+</html>
