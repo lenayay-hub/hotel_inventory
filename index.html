@@ -21,7 +21,6 @@
 
     <div id="editScreen" class="main-container">
         
-        <!-- ★ 加入手動同步按鈕 -->
         <div class="flex justify-between items-center mb-4 mt-2 px-1">
             <h1 class="text-2xl font-bold text-gray-800">飯店布品盤點系統</h1>
             <button onclick="init()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-bold text-sm shadow-sm active:bg-blue-200 flex items-center gap-1">
@@ -30,13 +29,11 @@
         </div>
         
         <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 box-border">
-            <!-- 完美高度統一：h-14 -->
             <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer box-border" onchange="dateChanged()">
             </div>
 
-            <!-- 強制隱藏下拉箭頭，置中對齊 -->
             <div class="relative w-full bg-gray-200 rounded-lg h-14 flex items-center justify-center">
                 <select id="hotelSelect" class="w-full h-full bg-transparent font-bold text-xl px-4 outline-none text-center text-gray-900" style="-webkit-appearance: none; appearance: none;" onchange="renderItems()">
                     <option value="">載入中...</option>
@@ -80,14 +77,16 @@
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <h2 class="text-lg font-bold mb-3 text-center text-gray-800">請在下方簽名</h2>
             <canvas id="signCanvas"></canvas>
-            <div class="mt-4">
-                <button onclick="submitData()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-800">確定傳送</button>
+            
+            <!-- ★ 雙按鈕：清除 與 確定傳送 -->
+            <div class="flex gap-3 mt-4">
+                <button onclick="clearCanvas()" class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-lg shadow-sm active:bg-gray-300">清除</button>
+                <button onclick="submitData()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-blue-800">確定傳送</button>
             </div>
         </div>
     </div>
 
     <script>
-        // ★ 這裡請確認是您最新的 Google Apps Script 網址
         const API_URL = "https://script.google.com/macros/s/AKfycbwJv-qdQcoqowK1JYqSttVGYiSh0nW-SO1-6N_D9pSHok36i7XMt_uL_oRMKJGxFWw/exec";
         
         let masterData = [];
@@ -99,7 +98,6 @@
         const ctx = canvas.getContext('2d');
         let painting = false;
 
-        // ★ 時差修復：確保取得台灣本地時間的 YYYY-MM-DD
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
@@ -107,26 +105,18 @@
         async function init() {
             setupDateLimits();
             const listDiv = document.getElementById('itemsList');
-            // 按下同步時，強制顯示載入中動畫
             listDiv.innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>';
             
             try {
                 const noCacheUrl = `${API_URL}?action=getData&t=${new Date().getTime()}`;
                 const res = await fetch(noCacheUrl);
-                
                 if (!res.ok) throw new Error(`連線錯誤狀態碼: ${res.status}`);
-                
                 const data = await res.json();
                 
-                if (data.template && Array.isArray(data.template)) {
-                    masterData = data.template;
-                } else if (data.data && Array.isArray(data.data)) {
-                    masterData = data.data;
-                } else if (Array.isArray(data)) {
-                    masterData = data;
-                } else {
-                    throw new Error("回傳格式不正確");
-                }
+                if (data.template && Array.isArray(data.template)) masterData = data.template;
+                else if (data.data && Array.isArray(data.data)) masterData = data.data;
+                else if (Array.isArray(data)) masterData = data;
+                else throw new Error("回傳格式不正確");
 
                 if (masterData.length === 0) throw new Error("「基礎設定」內沒有找到飯店資料");
                 
@@ -135,19 +125,18 @@
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note };
+                        // ★ 把簽名檔也存進記憶體
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, sign: r.sign || '' };
                     });
                 }
 
                 const hotels = [...new Set(masterData.map(d => d.hotel))];
                 const hotelSelect = document.getElementById('hotelSelect');
                 
-                // 只有在還沒選擇飯店，或是重新載入時，才預設選第一間
                 if (hotels.length > 0 && !hotelSelect.value) {
                     hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
                     hotelSelect.value = hotels[0]; 
                 } else if (hotels.length > 0) {
-                    // 保留原本選好的飯店，只更新列表
                     hotelSelect.innerHTML = hotels.map(h => `<option value="${h}">${h}</option>`).join('');
                 }
                 
@@ -165,11 +154,9 @@
             const today = new Date();
             const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             const nextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0); 
-            
             const dp = document.getElementById('datePicker');
             dp.min = getLocalDateString(prevMonth);
             dp.max = getLocalDateString(nextMonth);
-            // 避免跳回前一天
             dp.value = getLocalDateString(today);
             updateDateDisplay();
         }
@@ -192,7 +179,7 @@
         function handleInput(date, hotel, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][hotel]) userInputs[date][hotel] = {};
-            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '' };
+            if (!userInputs[date][hotel][item]) userInputs[date][hotel][item] = { count: '', note: '', sign: '' };
             userInputs[date][hotel][item][field] = value;
         }
 
@@ -203,11 +190,8 @@
             const locked = isLocked();
             
             let filteredData = masterData;
-            if (search) {
-                filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
-            } else {
-                filteredData = masterData.filter(d => d.hotel === dropdownHotel);
-            }
+            if (search) filteredData = masterData.filter(d => d.hotel.toLowerCase().includes(search));
+            else filteredData = masterData.filter(d => d.hotel === dropdownHotel);
             
             if (filteredData.length === 0) {
                 document.getElementById('itemsList').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold">無符合資料</div>';
@@ -303,6 +287,14 @@
             document.getElementById('editScreen').classList.remove('hidden');
         }
 
+        // --- 畫布與簽名處理邏輯 ---
+        function clearCanvas() {
+            // 填滿白底，否則存成圖片時背景會變黑
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+        }
+
         function start(e) { painting = true; draw(e); }
         function draw(e) {
             if(!painting) return;
@@ -324,13 +316,29 @@
             activeHotel = hotel;
             activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
+            
+            const dateStr = document.getElementById('datePicker').value;
+            // 嘗試取得之前存下來的簽名圖檔
+            const savedSign = userInputs[dateStr]?.[activeHotel]?.[activeItem]?.sign;
+
             requestAnimationFrame(() => {
                 canvas.width = canvas.offsetWidth;
                 canvas.height = 220;
                 ctx.lineWidth = 4;
                 ctx.lineCap = 'round';
                 ctx.strokeStyle = '#000';
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 如果有舊簽名，就畫出來；沒有就給白底
+                if (savedSign && savedSign.startsWith('data:image')) {
+                    const img = new Image();
+                    img.onload = () => {
+                        clearCanvas(); // 先上白底
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height); // 再疊上簽名
+                    };
+                    img.src = savedSign;
+                } else {
+                    clearCanvas();
+                }
             });
         }
 
@@ -351,29 +359,33 @@
                 return;
             }
 
+            // ★ 將畫布存成體積較小的 jpeg 圖檔 (品質 0.8)
+            const signBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // 立刻更新到本地記憶體，確保馬上打開就看得到
+            handleInput(dateStr, activeHotel, activeItem, 'sign', signBase64);
+
             const payload = { 
                 date: dateStr,
                 hotel: activeHotel,
                 item: activeItem, 
                 count: countVal, 
                 note: noteVal, 
+                sign: signBase64, // 傳送簽名檔給 Google 試算表
                 timestamp: new Date().toLocaleString() 
             };
             
             closeSign();
             showToast(`✅ ${activeItem} 已送出`);
             
+            // ★ 背景傳送，完全不執行自動重整
             fetch(`${API_URL}?t=${new Date().getTime()}`, { 
                 method: 'POST', 
                 mode: 'no-cors', 
                 body: JSON.stringify(payload) 
-            }).then(() => {
-                // 送出後，稍微等一下自動再同步一次，確保最新資料有進來
-                setTimeout(init, 1500);
             });
         }
 
-        // 啟動系統
         init();
     </script>
 </body>
