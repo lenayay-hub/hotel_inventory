@@ -8,27 +8,40 @@
     <style>
         body { background-color: #f8fafc; touch-action: manipulation; }
         .main-container { max-width: 500px; margin: 0 auto; }
+        input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
         .sign-canvas { display: block; width: 100%; height: 160px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
     </style>
 </head>
 <body class="p-3 pb-32 relative">
 
     <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
-        ✅ 點收簽單已成功送出！
+        ✅ 點收簽單已成功更新！
     </div>
 
     <div class="main-container">
-        <div class="bg-blue-800 text-white p-5 rounded-2xl shadow-md mb-6 text-center">
-            <h1 id="hotelTitle" class="text-3xl font-black mb-2">載入中...</h1>
-            <p id="dateTitle" class="text-lg font-bold text-blue-200">今日出貨點收單</p>
+        <!-- 頂部資訊區 -->
+        <div class="bg-blue-800 text-white p-5 rounded-t-2xl shadow-md text-center relative">
+            <h1 id="hotelTitle" class="text-3xl font-black mb-1 mt-2">載入中...</h1>
+            <p id="dateTitle" class="text-lg font-bold text-blue-200">出貨點收系統</p>
+        </div>
+        
+        <!-- 日期選擇區 -->
+        <div class="bg-white p-4 rounded-b-2xl shadow-md mb-6 flex flex-col gap-3 border-t border-blue-900">
+            <div class="relative w-full bg-blue-50 rounded-lg h-14 flex items-center justify-center border border-blue-200">
+                <span class="absolute left-4 text-xl">📅</span>
+                <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-blue-900">載入中...</div>
+                <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="dateChanged()">
+            </div>
+            <p class="text-center text-sm text-gray-400 font-bold">點擊上方可回溯查詢歷史點交紀錄</p>
         </div>
 
+        <!-- 點交清單區 -->
         <div id="departmentsContainer" class="space-y-6">
-            <div class="text-center py-10 text-gray-500 font-bold text-lg">載入今日盤點出貨單中...</div>
+            <div class="text-center py-10 text-gray-500 font-bold text-lg">載入資料中...</div>
         </div>
     </div>
 
-    <!-- 雙簽名視窗 (共用) -->
+    <!-- 雙簽名視窗 -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000] overflow-y-auto">
         <div class="bg-white p-5 rounded-2xl w-full max-w-sm my-auto">
             <h2 id="modalDeptTitle" class="text-xl font-black text-center text-blue-800 mb-4 border-b pb-2">部門名稱</h2>
@@ -36,7 +49,7 @@
             <div class="mb-5">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold text-gray-800">1. 飯店端主管簽收</h2>
-                    <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除</button>
+                    <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重簽</button>
                 </div>
                 <canvas id="clientCanvas" class="sign-canvas"></canvas>
             </div>
@@ -44,7 +57,7 @@
             <div class="mb-6">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold text-gray-800">2. 百麒司機簽收</h2>
-                    <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除</button>
+                    <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重簽</button>
                 </div>
                 <canvas id="driverCanvas" class="sign-canvas"></canvas>
             </div>
@@ -57,11 +70,11 @@
     </div>
 
     <script>
-        // ★★★ 請替換成最新的 API_URL ★★★
+        // ★ 您的專屬 API 網址已帶入
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let currentHotel = "";
-        let currentDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        let currentDate = "";
         let groupedData = {}; 
         let activeDeptKey = ""; 
 
@@ -70,39 +83,75 @@
         const clientCtx = clientCanvas.getContext('2d');
         const driverCtx = driverCanvas.getContext('2d');
 
+        function getLocalDateString(dateObj) {
+            return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+
+        function setupDateLimits() {
+            const today = new Date();
+            const prevMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1); 
+            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0); 
+            const dp = document.getElementById('datePicker');
+            dp.min = getLocalDateString(prevMonth);
+            dp.max = getLocalDateString(nextMonth);
+            dp.value = getLocalDateString(today);
+            updateDateDisplay();
+        }
+
+        function updateDateDisplay() {
+            const d = new Date(document.getElementById('datePicker').value);
+            document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+            currentDate = document.getElementById('datePicker').value;
+        }
+
+        function dateChanged() { updateDateDisplay(); fetchData(); }
+
         async function init() {
             const urlParams = new URLSearchParams(window.location.search);
             currentHotel = urlParams.get('hotel');
-            document.getElementById('dateTitle').innerText = `${currentDate} 出貨點收單`;
-
-            if (!currentHotel) {
-                document.getElementById('hotelTitle').innerText = "連結無效";
-                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-red-500 font-bold text-xl">請使用專屬連結進入<br>?hotel=飯店名</div>';
+            
+            // ★ 嚴格隔離機制：如果沒有帶入飯店名稱，直接鎖死畫面，不抓取任何資料！
+            if (!currentHotel || currentHotel.trim() === "") {
+                document.getElementById('hotelTitle').innerText = "連結錯誤";
+                document.getElementById('departmentsContainer').innerHTML = `
+                    <div class="text-center py-16 bg-red-50 rounded-2xl border-2 border-red-200">
+                        <span class="text-4xl block mb-2">🚫</span>
+                        <div class="text-red-600 font-black text-xl mb-2">無效的存取連結</div>
+                        <div class="text-red-500 font-bold text-sm">請向物流單位索取您所屬飯店的專屬點交網址</div>
+                    </div>`;
                 return;
             }
 
-            document.getElementById('hotelTitle').innerText = currentHotel + " 點交系統";
+            document.getElementById('hotelTitle').innerText = currentHotel + " 點交";
+            setupDateLimits();
+            fetchData();
+        }
+
+        async function fetchData() {
+            document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">載入資料中...</div>';
+            groupedData = {}; 
 
             try {
-                const res = await fetch(`${API_URL}?action=getLogisticsData&hotel=${currentHotel}&date=${currentDate}&t=${new Date().getTime()}`);
+                // 只抓取該特定飯店的資料
+                let fetchUrl = `${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`;
+                
+                const res = await fetch(fetchUrl);
                 const data = await res.json();
 
                 if (data.length === 0) {
-                    document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">今日阿姨尚未完成盤點，無資料可對帳！</div>';
+                    document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">此日期無待點交資料！</div>';
                     return;
                 }
 
                 data.forEach(item => {
-                    if (!groupedData[item.deptName]) groupedData[item.deptName] = { items: [], isDone: false };
-                    item.actualQty = item.originalQty; 
-                    item.driverNote = "";
+                    if (!groupedData[item.deptName]) {
+                        groupedData[item.deptName] = { items: [], clientSig: item.clientSig, driverSig: item.driverSig };
+                    }
                     groupedData[item.deptName].items.push(item);
                 });
-
                 renderDepartments();
-
             } catch (err) {
-                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網址</div>`;
+                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網址連線</div>`;
             }
         }
 
@@ -110,7 +159,6 @@
             groupedData[dept].items[idx].actualQty = val;
             const original = groupedData[dept].items[idx].originalQty;
             const statusSpan = document.getElementById(`status-${dept}-${idx}`);
-            
             if (String(val) === String(original)) {
                 statusSpan.innerHTML = "✅ 相符"; statusSpan.className = "text-green-600 font-bold ml-2 text-sm";
             } else {
@@ -118,41 +166,43 @@
             }
         }
 
-        function handleNoteChange(dept, idx, val) {
-            groupedData[dept].items[idx].driverNote = val;
-        }
-
         function renderDepartments() {
             let html = "";
             for (let dept in groupedData) {
-                if (groupedData[dept].isDone) {
-                    html += `<div class="bg-green-50 border-2 border-green-500 p-4 rounded-xl text-center shadow-sm">
+                let hasClientSig = groupedData[dept].clientSig ? true : false;
+                let hasDriverSig = groupedData[dept].driverSig ? true : false;
+
+                if (hasClientSig && hasDriverSig) {
+                    html += `<div class="bg-green-50 border-2 border-green-500 p-4 rounded-xl text-center shadow-sm mb-4">
                                 <h2 class="font-black text-xl text-green-700">${dept}</h2>
-                                <p class="text-green-600 font-bold mt-1">🎉 點收完畢，已回傳總部！</p>
+                                <p class="text-green-600 font-bold mt-1">🎉 雙方皆已點收完畢！</p>
                              </div>`;
-                    continue;
+                    continue; 
                 }
 
+                let statusBadge = "";
+                if (hasClientSig && !hasDriverSig) statusBadge = `<div class="bg-yellow-100 text-yellow-800 text-sm font-bold p-2 rounded-lg mb-3 text-center border border-yellow-300">🏨 飯店主管已簽名，等待司機簽名</div>`;
+                if (!hasClientSig && hasDriverSig) statusBadge = `<div class="bg-yellow-100 text-yellow-800 text-sm font-bold p-2 rounded-lg mb-3 text-center border border-yellow-300">🚚 司機已簽名，等待飯店確認</div>`;
+
                 let itemsHtml = groupedData[dept].items.map((item, idx) => `
-                    <div class="border-b border-gray-100 py-3 last:border-0">
-                        <div class="flex justify-between items-center mb-1">
+                    <div class="border-b border-gray-100 py-4 last:border-0">
+                        <div class="flex justify-between items-center mb-2">
                             <span class="font-black text-2xl text-gray-800">${item.itemName}</span>
                             <div class="text-right">
                                 <span class="text-xs text-gray-400 block">百麒出貨 (盤點量)</span>
-                                <span class="font-bold text-xl text-gray-400">${item.originalQty}</span>
+                                <span class="font-bold text-2xl text-gray-400">${item.originalQty}</span>
                             </div>
                         </div>
-                        ${item.auntNote ? `<div class="text-sm text-orange-600 bg-orange-50 p-2 rounded mb-2">👩‍🔧 阿姨備註: ${item.auntNote}</div>` : ''}
+                        ${item.auntNote ? `<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: ${item.auntNote}</div>` : ''}
                         
-                        <div class="bg-blue-50 p-3 rounded-lg flex flex-col gap-2">
+                        <div class="bg-blue-50 p-3 rounded-lg">
                             <div class="flex justify-between items-center">
                                 <span class="font-bold text-gray-700">飯店實點數量：</span>
                                 <div class="flex items-center">
-                                    <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}" class="w-20 p-1 text-right font-black text-xl border-b-2 border-blue-500 bg-white outline-none rounded">
-                                    <span id="status-${dept}-${idx}" class="text-green-600 font-bold ml-2 text-sm">✅ 相符</span>
+                                    <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}" class="w-20 p-1 text-right font-black text-2xl border-b-2 border-blue-500 bg-white outline-none rounded text-blue-700 shadow-sm">
+                                    <span id="status-${dept}-${idx}" class="text-green-600 font-bold ml-3 text-base">✅ 相符</span>
                                 </div>
                             </div>
-                            <input type="text" oninput="handleNoteChange('${dept}', ${idx}, this.value)" placeholder="司機備註 (短少原因等)..." class="w-full p-2 text-sm border border-gray-200 rounded outline-none">
                         </div>
                     </div>
                 `).join('');
@@ -162,9 +212,10 @@
                     <div class="bg-gray-800 text-white p-3 -mx-4 -mt-4 mb-3 rounded-t-2xl">
                         <h2 class="text-xl font-black text-center">${dept}</h2>
                     </div>
+                    ${statusBadge}
                     ${itemsHtml}
                     <button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-green-600 text-white rounded-xl font-bold text-lg shadow-md active:bg-green-700">
-                        📝 點交確認，進行雙方簽名
+                        📝 進行點交與簽名
                     </button>
                 </div>`;
             }
@@ -172,9 +223,11 @@
         }
 
         function setupCanvas(canvas, ctx) {
+            canvas.isModified = false;
             function start(e) { e.preventDefault(); canvas.painting = true; draw(e); }
             function draw(e) {
                 if(!canvas.painting) return; e.preventDefault();
+                canvas.isModified = true; 
                 const rect = canvas.getBoundingClientRect();
                 const x = (e.clientX || e.touches[0].clientX) - rect.left;
                 const y = (e.clientY || e.touches[0].clientY) - rect.top;
@@ -188,23 +241,40 @@
         setupCanvas(clientCanvas, clientCtx);
         setupCanvas(driverCanvas, driverCtx);
 
-        function clearCanvas(ctx, canvas) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+        function clearCanvas(ctx, canvas) { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            canvas.isModified = true; 
+        }
 
         function openSignModal(deptName) {
             activeDeptKey = deptName;
             document.getElementById('modalDeptTitle').innerText = deptName;
+            
+            let existClient = groupedData[deptName].clientSig;
+            let existDriver = groupedData[deptName].driverSig;
+
             document.getElementById('signModal').classList.remove('hidden');
             requestAnimationFrame(() => {
-                [clientCanvas, driverCanvas].forEach(c => { c.width = c.offsetWidth; c.height = 160; });
-                [clientCtx, driverCtx].forEach(ctx => { ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; });
+                [clientCanvas, driverCanvas].forEach(c => { c.width = c.offsetWidth; c.height = 160; c.isModified = false; });
+                [clientCtx, driverCtx].forEach(ctx => { ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, 500, 200); });
+                
+                if(existClient) { let img = new Image(); img.onload = ()=> clientCtx.drawImage(img,0,0); img.src = existClient; }
+                if(existDriver) { let img = new Image(); img.onload = ()=> driverCtx.drawImage(img,0,0); img.src = existDriver; }
             });
         }
         function closeSignModal() { document.getElementById('signModal').classList.add('hidden'); }
 
         function submitVerify() {
-            const isClientEmpty = !clientCtx.getImageData(0,0,clientCanvas.width,clientCanvas.height).data.some(c => c !== 0);
-            const isDriverEmpty = !driverCtx.getImageData(0,0,driverCanvas.width,driverCanvas.height).data.some(c => c !== 0);
-            if (isClientEmpty || isDriverEmpty) return alert("請飯店主管與司機雙方皆完成簽名！");
+            let cBlank = !clientCtx.getImageData(0,0,clientCanvas.width,clientCanvas.height).data.some(c => c !== 0);
+            let dBlank = !driverCtx.getImageData(0,0,driverCanvas.width,driverCanvas.height).data.some(c => c !== 0);
+
+            let existClient = groupedData[activeDeptKey].clientSig;
+            let existDriver = groupedData[activeDeptKey].driverSig;
+            
+            let cBase64 = cBlank ? "" : clientCanvas.toDataURL();
+            let dBase64 = dBlank ? "" : driverCanvas.toDataURL();
+
+            if ((!existClient && cBlank) && (!existDriver && dBlank)) return alert("請至少一方完成簽名！(司機或飯店)");
 
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
@@ -215,11 +285,10 @@
                 deptName: activeDeptKey,
                 date: currentDate,
                 verifyJson: JSON.stringify(groupedData[activeDeptKey].items),
-                clientSigBase64: clientCanvas.toDataURL(),
-                driverSigBase64: driverCanvas.toDataURL()
+                clientSigBase64: cBase64,
+                driverSigBase64: dBase64
             };
 
-            // ★ 解除阻擋：使用無敵穿透模式 mode: 'no-cors'
             fetch(API_URL, { 
                 method: 'POST', 
                 mode: 'no-cors',
@@ -228,9 +297,12 @@
             })
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
+                
+                if (cBase64) groupedData[activeDeptKey].clientSig = cBase64;
+                if (dBase64) groupedData[activeDeptKey].driverSig = dBase64;
+
                 closeSignModal();
-                groupedData[activeDeptKey].isDone = true; 
-                renderDepartments(); 
+                fetchData(); 
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
             })
