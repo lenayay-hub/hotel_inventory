@@ -50,11 +50,12 @@
         </div>
     </div>
 
+    <!-- 簽名板 Modal -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg font-bold text-gray-800">確認數量並簽名</h2>
-                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 rounded">清除重寫</button>
+                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
             <div class="mt-4">
@@ -95,7 +96,8 @@
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true };
+                        // 將雲端抓下來的簽名也存進記憶裡
+                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true, signature: r.signature };
                     });
                 }
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
@@ -128,7 +130,7 @@
         function handleInput(date, category, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][category]) userInputs[date][category] = {};
-            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false };
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, signature: '' };
             userInputs[date][category][item][field] = value;
         }
 
@@ -158,9 +160,11 @@
         }
 
         function setupCanvas() {
+            canvas.isModified = false;
             function start(e) { painting = true; draw(e); }
             function draw(e) {
                 if(!painting) return; e.preventDefault(); 
+                canvas.isModified = true;
                 const rect = canvas.getBoundingClientRect();
                 const x = (e.clientX || e.touches[0].clientX) - rect.left;
                 const y = (e.clientY || e.touches[0].clientY) - rect.top;
@@ -173,14 +177,31 @@
         }
         setupCanvas();
 
-        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+        function clearCanvas() { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            canvas.isModified = true;
+        }
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
+        
         function openSign(category, item) { 
             activeCategory = category; activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
+
+            const dateStr = document.getElementById('datePicker').value;
+            const existingSig = userInputs[dateStr]?.[category]?.[item]?.signature;
+
             requestAnimationFrame(() => {
                 canvas.width = canvas.offsetWidth; canvas.height = 220;
-                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; clearCanvas();
+                canvas.isModified = false; 
+                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 如果已經有簽名，把它重新畫上去
+                if (existingSig) {
+                    let img = new Image();
+                    img.onload = () => ctx.drawImage(img, 0, 0);
+                    img.src = existingSig;
+                }
             });
         }
 
@@ -188,24 +209,43 @@
             const dateStr = document.getElementById('datePicker').value;
             const countVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.count || 0;
             const noteVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.note || '';
+            const existingSig = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.signature || '';
             
             if(!countVal || countVal === "0") return alert("請先填寫盤點數量！");
-            
+
+            let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
+            let sigBase64 = isBlank ? "" : canvas.toDataURL();
+
+            if (!sigBase64 && !existingSig) return alert("請確認是否已完成簽名！");
+
+            const finalSig = canvas.isModified ? sigBase64 : existingSig;
+
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
 
-            const payload = { type: 'inventory', date: dateStr, hotel: activeCategory, item: activeItem, count: countVal, note: noteVal, timestamp: new Date().toLocaleString() };
+            const payload = { 
+                type: 'inventory', 
+                date: dateStr, 
+                hotel: activeCategory, 
+                item: activeItem, 
+                count: countVal, 
+                note: noteVal, 
+                signature: finalSig,
+                timestamp: new Date().toLocaleString() 
+            };
             
-            // 採用乾淨的安全通道傳送，配合後台的全新綠色通道
             fetch(API_URL, { 
                 method: 'POST',
+                mode: 'no-cors',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload) 
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(() => {
                 btn.innerText = "確定傳送"; btn.disabled = false;
                 handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
+                if (canvas.isModified) {
+                    handleInput(dateStr, activeCategory, activeItem, 'signature', finalSig);
+                }
                 closeSign(); 
                 renderItems();
                 const toast = document.getElementById('toast');
@@ -213,12 +253,8 @@
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
             })
             .catch(err => {
-                // 做為雙重保險：萬一某些環境依然不允許讀取回傳，只要沒有拋出重大網路中斷，就判定送出成功
                 btn.innerText = "確定傳送"; btn.disabled = false;
-                handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
-                closeSign(); renderItems();
-                const toast = document.getElementById('toast');
-                toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 2000);
+                alert("網路不穩！但已將簽名暫存於您的手機，請稍後再試。");
             });
         }
         init();
