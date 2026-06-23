@@ -10,6 +10,8 @@
         .main-container { max-width: 500px; margin: 0 auto; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
         #signCanvas { display: block; width: 100%; height: 220px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
+        /* 鎖定狀態的視覺樣式 */
+        .locked-input { background-color: #f3f4f6 !important; color: #9ca3af !important; border-color: #e5e7eb !important; pointer-events: none; }
     </style>
 </head>
 <body class="p-3 pb-32 relative">
@@ -54,17 +56,19 @@
     <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg font-bold text-gray-800">確認數量並簽名</h2>
+                <h2 class="text-lg font-bold text-gray-800">請先簽名以解鎖輸入框</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
-            <div class="mt-4">
-                <button id="submitBtn" onclick="submitData()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md">確定傳送</button>
+            <div class="mt-4 flex gap-2">
+                <button onclick="closeSign()" class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold text-lg">取消</button>
+                <button onclick="confirmSignature()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md">確認簽名</button>
             </div>
         </div>
     </div>
 
     <script>
+        // ★★★ 維持您的專屬 API 網址 ★★★
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let masterData = []; 
@@ -96,8 +100,18 @@
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
-                        // 將雲端抓下來的簽名也存進記憶裡
-                        userInputs[r.date][r.hotel][r.item] = { count: r.count, note: r.note, hasSigned: true, signature: r.signature };
+                        
+                        // 狀態判斷：只要有數量，就代表已經「送出完成」；只要有簽名或數量，代表已「解鎖簽名」
+                        let isSub = r.count && String(r.count).trim() !== "" ? true : false;
+                        let hasSig = r.signature || isSub ? true : false; 
+
+                        userInputs[r.date][r.hotel][r.item] = { 
+                            count: r.count, 
+                            note: r.note, 
+                            hasSigned: hasSig, 
+                            isSubmitted: isSub,
+                            signature: r.signature || "" 
+                        };
                     });
                 }
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
@@ -130,7 +144,7 @@
         function handleInput(date, category, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][category]) userInputs[date][category] = {};
-            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, signature: '' };
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, isSubmitted: false, signature: '' };
             userInputs[date][category][item][field] = value;
         }
 
@@ -143,18 +157,42 @@
             document.getElementById('itemsList').innerHTML = filteredData.map(d => {
                 const count = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
                 const note = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
-                const isSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned;
-                const btnClass = isSigned ? 'bg-green-600' : 'bg-blue-600';
-                const btnText = isSigned ? '✅ 已成功送出 (點擊可修改)' : '核對並簽名送出';
+                const hasSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned || false;
+                const isSubmitted = userInputs[dateStr]?.[d.hotel]?.[d.item]?.isSubmitted || false;
                 
+                // 動態按鈕與狀態
+                let actionButton = "";
+                let inputStateClass = hasSigned ? "bg-transparent text-blue-600 border-blue-400" : "locked-input";
+                let noteStateClass = hasSigned ? "bg-gray-50 text-gray-800" : "locked-input";
+                let placeholderText = hasSigned ? "0" : "🔒";
+                let notePlaceholderText = hasSigned ? "有破損或短少？請寫備註..." : "🔒 請先簽名解鎖...";
+
+                if (isSubmitted) {
+                    actionButton = `<button onclick="submitItem('${d.hotel}', '${d.item}')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-sm">✅ 已成功送出 (可修改後再次送出)</button>`;
+                } else if (hasSigned) {
+                    actionButton = `<button onclick="submitItem('${d.hotel}', '${d.item}')" class="w-full py-3 bg-orange-500 text-white rounded-lg font-bold shadow-md animate-pulse text-lg">📤 第二步：確認數量並送出</button>`;
+                } else {
+                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm">✍️ 第一步：點此簽名解鎖</button>`;
+                }
+
                 return `
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-bold text-2xl text-gray-900">${d.item}</span>
-                        <input type="text" inputmode="numeric" oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" value="${count}" class="w-20 p-1 text-right font-black text-2xl border-b-2 border-blue-400 bg-transparent outline-none text-blue-600" placeholder="0">
+                        <input type="text" inputmode="numeric" 
+                            oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" 
+                            value="${count}" 
+                            ${!hasSigned ? 'disabled' : ''}
+                            class="w-20 p-1 text-right font-black text-2xl border-b-2 outline-none ${inputStateClass}" 
+                            placeholder="${placeholderText}">
                     </div>
-                    <input type="text" oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" value="${note}" class="w-full p-2 mb-3 border border-gray-200 rounded-lg text-sm bg-gray-50 outline-none" placeholder="有破損或短少？請寫備註...">
-                    <button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-2 ${btnClass} text-white rounded-lg font-bold shadow-sm">${btnText}</button>
+                    <input type="text" 
+                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" 
+                        value="${note}" 
+                        ${!hasSigned ? 'disabled' : ''}
+                        class="w-full p-2 mb-3 border border-gray-200 rounded-lg text-sm outline-none ${noteStateClass}" 
+                        placeholder="${notePlaceholderText}">
+                    ${actionButton}
                 </div>`;
             }).join('');
         }
@@ -196,7 +234,6 @@
                 ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 如果已經有簽名，把它重新畫上去
                 if (existingSig) {
                     let img = new Image();
                     img.onload = () => ctx.drawImage(img, 0, 0);
@@ -205,32 +242,49 @@
             });
         }
 
-        function submitData() {
+        // 新增：只確認簽名，不立刻送出，而是解鎖輸入框
+        function confirmSignature() {
             const dateStr = document.getElementById('datePicker').value;
-            const countVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.count || 0;
-            const noteVal = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.note || '';
             const existingSig = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.signature || '';
             
-            if(!countVal || countVal === "0") return alert("請先填寫盤點數量！");
-
             let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
-            let sigBase64 = isBlank ? "" : canvas.toDataURL();
+            
+            if (isBlank && !existingSig) {
+                return alert("請先在空白處簽名，才能解鎖輸入框喔！");
+            }
 
-            if (!sigBase64 && !existingSig) return alert("請確認是否已完成簽名！");
+            let sigBase64 = isBlank ? existingSig : canvas.toDataURL();
+            
+            handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 標記為已簽名(解鎖)
+            
+            closeSign();
+            renderItems(); // 重新渲染，此時輸入框就會亮起解鎖
+        }
 
-            const finalSig = canvas.isModified ? sigBase64 : existingSig;
+        // 修改：獨立的送出按鈕，檢查數量與簽名
+        function submitItem(category, item) {
+            const dateStr = document.getElementById('datePicker').value;
+            const countVal = userInputs[dateStr]?.[category]?.[item]?.count || 0;
+            const noteVal = userInputs[dateStr]?.[category]?.[item]?.note || '';
+            const sigBase64 = userInputs[dateStr]?.[category]?.[item]?.signature || '';
+            
+            if(!countVal || countVal === "0" || String(countVal).trim() === "") {
+                return alert("簽名已完成解鎖！\n請填寫「盤點數量」後再按下送出！");
+            }
+            if(!sigBase64) {
+                return alert("系統異常：找不到您的簽名，請重新簽名！");
+            }
 
-            const btn = document.getElementById('submitBtn');
-            btn.innerText = "傳送中..."; btn.disabled = true;
-
+            // 尋找按鈕並變成載入中狀態 (利用事件物件或重新渲染來防連點)
             const payload = { 
                 type: 'inventory', 
                 date: dateStr, 
-                hotel: activeCategory, 
-                item: activeItem, 
+                hotel: category, 
+                item: item, 
                 count: countVal, 
                 note: noteVal, 
-                signature: finalSig,
+                signature: sigBase64,
                 timestamp: new Date().toLocaleString() 
             };
             
@@ -241,22 +295,20 @@
                 body: JSON.stringify(payload) 
             })
             .then(() => {
-                btn.innerText = "確定傳送"; btn.disabled = false;
-                handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true);
-                if (canvas.isModified) {
-                    handleInput(dateStr, activeCategory, activeItem, 'signature', finalSig);
-                }
-                closeSign(); 
+                handleInput(dateStr, category, item, 'isSubmitted', true); // 標記為已成功送出
                 renderItems();
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); 
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
             })
             .catch(err => {
-                btn.innerText = "確定傳送"; btn.disabled = false;
-                alert("網路不穩！但已將簽名暫存於您的手機，請稍後再試。");
+                // 離線防護
+                handleInput(dateStr, category, item, 'isSubmitted', true);
+                renderItems();
+                alert("網路不穩！但資料已暫存於手機，請在網路良好時重整頁面確認。");
             });
         }
+        
         init();
     </script>
 </body>
