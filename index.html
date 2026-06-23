@@ -142,7 +142,9 @@
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
                         let isSub = r.count && String(r.count).trim() !== "" ? true : false;
-                        let hasSig = r.signature || isSub ? true : false; 
+                        
+                        // ★ 載入時，只要是已經存檔過的資料，一律視為「未解鎖 (hasSigned=false)」
+                        let hasSig = false; 
 
                         userInputs[r.date][r.hotel][r.item] = { 
                             count: r.count, 
@@ -187,17 +189,18 @@
             userInputs[date][category][item][field] = value;
         }
 
-        // 點擊數量框的防呆邏輯
+        // ★ 點擊數量框的防呆邏輯
         function handleItemClick(hotel, item) {
             const dateStr = document.getElementById('datePicker').value;
             const hasSigned = userInputs[dateStr]?.[hotel]?.[item]?.hasSigned;
             
+            // 如果未簽名（或是送出後被鎖死），直接打開簽名板要求簽名
             if (!hasSigned) {
-                alert("🔒 請先點擊下方藍色按鈕【✍️ 第一步：點此簽名解鎖】！");
-                return; // 完全阻擋
+                openSign(hotel, item);
+                return; 
             }
             
-            // 如果已簽名，打開自訂計算機
+            // 如果已簽名解鎖，直接打開計算機
             openCalc(hotel, item);
         }
 
@@ -216,14 +219,17 @@
                 let actionButton = "";
                 // 視覺樣式
                 let numDisplayClass = hasSigned ? "bg-white text-blue-700 border-blue-500 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
-                let numText = count !== "" ? count : (hasSigned ? "點此輸入" : "🔒 鎖定");
+                let numText = count !== "" ? count : (hasSigned ? "點此輸入" : "🔒 點此簽名");
 
-                if (isSubmitted) {
-                    actionButton = `<div class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-center border border-green-200">✅ 數量已自動儲存至總部</div>`;
+                if (isSubmitted && !hasSigned) {
+                    // 已存檔，且目前為鎖定狀態
+                    actionButton = `<div class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-center border border-green-200 shadow-sm">✅ 已存檔 (修改需點擊上方重新簽名)</div>`;
                 } else if (hasSigned) {
+                    // 已簽名解鎖，正在編輯
                     actionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-center border border-orange-200 animate-pulse">👆 請點擊上方數量框輸入數字</div>`;
                 } else {
-                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md text-lg">✍️ 第一步：點此簽名解鎖</button>`;
+                    // 完全沒動過的初始狀態
+                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md text-lg">✍️ 點此簽名解鎖輸入框</button>`;
                 }
 
                 return `
@@ -232,13 +238,11 @@
                     
                     <div class="flex justify-between items-center mb-3 relative z-20">
                         <span class="font-black text-2xl text-gray-800">${d.item}</span>
-                        <!-- ★ 這裡廢除 input，改成 div 按鈕，絕對不會彈出手機鍵盤！ -->
                         <div onclick="handleItemClick('${d.hotel}', '${d.item}')" class="px-4 py-2 text-right font-black text-2xl border-b-4 rounded-t-lg cursor-pointer min-w-[80px] ${numDisplayClass}">
                             ${numText}
                         </div>
                     </div>
                     
-                    <!-- 備註欄 (離開焦點時自動儲存) -->
                     <input type="text" 
                         oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)"
                         onchange="if(${hasSigned}) submitItemToServer('${d.hotel}', '${d.item}')"
@@ -279,40 +283,55 @@
         function openSign(category, item) { 
             activeCategory = category; activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
+
             const dateStr = document.getElementById('datePicker').value;
             const existingSig = userInputs[dateStr]?.[category]?.[item]?.signature;
 
             requestAnimationFrame(() => {
-                canvas.width = canvas.offsetWidth; canvas.height = 220; canvas.isModified = false; 
-                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvas.width = canvas.offsetWidth; canvas.height = 220;
+                canvas.isModified = false; 
+                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 如果之前有簽名，自動帶入方便快速修改
                 if (existingSig) {
-                    let img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0); img.src = existingSig;
+                    let img = new Image();
+                    img.onload = () => ctx.drawImage(img, 0, 0);
+                    img.src = existingSig;
                 }
             });
         }
 
+        // ★ 簽名完自動轉跳計算機
         function confirmSignature() {
             const dateStr = document.getElementById('datePicker').value;
             const existingSig = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.signature || '';
+            
             let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
             
-            if (isBlank && !existingSig) return alert("請先在空白處簽名，才能解鎖輸入框喔！");
+            if (isBlank && !existingSig) {
+                return alert("請先在空白處簽名，才能解鎖輸入框喔！");
+            }
 
             let sigBase64 = isBlank ? existingSig : canvas.toDataURL();
+            
             handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
-            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 解鎖
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 標記為已簽名(解鎖)
+            handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); // 解除送出狀態，進入編輯模式
             
             closeSign();
-            renderItems(); // 畫面解鎖，可以開始用計算機了
+            renderItems(); 
+            
+            // 自動開啟底部的計算機
+            openCalc(activeCategory, activeItem);
         }
 
         // ================= 計算機鍵盤邏輯 =================
         function openCalc(hotel, item) {
             activeCategory = hotel; activeItem = item;
             const dateStr = document.getElementById('datePicker').value;
-            document.getElementById('calcTitle').innerText = `正在盤點：${item}`;
+            document.getElementById('calcTitle').innerText = `正在計算：${item}`;
             
-            // 載入舊數字
             calcExpr = String(userInputs[dateStr]?.[hotel]?.[item]?.count || "");
             if(calcExpr === "0") calcExpr = "";
             document.getElementById('calcDisplay').innerText = calcExpr || "0";
@@ -342,9 +361,8 @@
         function calcConfirm() {
             let finalValue = 0;
             try {
-                // 安全的計算邏輯 (過濾掉非數字和加減號的字元)
                 if (/^[0-9\+\-]+$/.test(calcExpr)) {
-                    finalValue = eval(calcExpr); // 自動算出結果
+                    finalValue = eval(calcExpr); 
                 } else {
                     finalValue = parseInt(calcExpr) || 0;
                 }
@@ -354,9 +372,8 @@
             handleInput(dateStr, activeCategory, activeItem, 'count', finalValue);
             
             closeCalc();
-            renderItems(); // 更新畫面上的數字
+            renderItems(); 
             
-            // ★ 計算完成後，自動把資料丟到背景上傳！完全防呆！
             submitItemToServer(activeCategory, activeItem);
         }
 
@@ -367,8 +384,8 @@
             const noteVal = userInputs[dateStr]?.[category]?.[item]?.note || '';
             const sigBase64 = userInputs[dateStr]?.[category]?.[item]?.signature || '';
             
-            if(!countVal || countVal === "0" || String(countVal).trim() === "") return; // 沒數字不存
-            if(!sigBase64) return; // 沒簽名不存
+            if(!countVal || countVal === "0" || String(countVal).trim() === "") return; 
+            if(!sigBase64) return; 
 
             const payload = { 
                 type: 'inventory', date: dateStr, hotel: category, item: item, 
@@ -381,12 +398,21 @@
                 body: JSON.stringify(payload) 
             })
             .then(() => {
-                handleInput(dateStr, category, item, 'isSubmitted', true); // 變成綠色勾勾
+                handleInput(dateStr, category, item, 'isSubmitted', true); 
+                // ★ 送出成功後，強制將狀態改為未簽名 (鎖死欄位)
+                handleInput(dateStr, category, item, 'hasSigned', false); 
+                
                 renderItems();
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); 
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
-            }).catch(e => console.log("暫存本地等待連線"));
+            }).catch(e => {
+                // 離線也先鎖死
+                handleInput(dateStr, category, item, 'isSubmitted', true); 
+                handleInput(dateStr, category, item, 'hasSigned', false); 
+                renderItems();
+                console.log("暫存本地等待連線");
+            });
         }
         
         init();
