@@ -10,25 +10,28 @@
         .main-container { max-width: 500px; margin: 0 auto; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
         #signCanvas { display: block; width: 100%; height: 220px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
-        /* 鎖定狀態的視覺樣式 */
-        .locked-input { background-color: #f3f4f6 !important; color: #9ca3af !important; border-color: #e5e7eb !important; pointer-events: none; }
+        
+        /* 專屬計算機鍵盤的滑動動畫 */
+        #calcModal { transition: transform 0.3s ease-in-out; }
+        .calc-btn { user-select: none; transition: background 0.1s; }
+        .calc-btn:active { background-color: #d1d5db; transform: scale(0.95); }
     </style>
 </head>
-<body class="p-3 pb-32 relative">
+<body class="p-3 pb-32 relative overflow-x-hidden">
     
-    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
-        已成功寫入資料庫！
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold">
+        ✅ 數量已自動儲存！
     </div>
 
     <div class="main-container">
         <div class="flex justify-between items-center mb-4 mt-2 px-1">
             <h1 class="text-2xl font-bold text-gray-800">布品盤點系統</h1>
-            <button onclick="init()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-bold text-sm shadow-sm">
+            <button onclick="init()" class="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-bold text-sm shadow-sm active:bg-blue-200">
                 🔄 雲端同步
             </button>
         </div>
         
-        <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3">
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-col gap-3 border border-gray-200">
             <div class="relative w-full bg-gray-100 rounded-lg h-14 flex items-center justify-center border border-gray-200">
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-black">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="dateChanged()">
@@ -47,16 +50,16 @@
             </div>
         </div>
 
-        <div id="itemsList" class="space-y-3">
+        <div id="itemsList" class="space-y-3 pb-10">
             <div class="text-center py-10 text-gray-500 font-bold text-lg">雲端資料同步中...</div>
         </div>
     </div>
 
-    <!-- 簽名板 Modal -->
-    <div id="signModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
+    <!-- 簽名板 Modal (第一步：強制簽名) -->
+    <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg font-bold text-gray-800">請先簽名以解鎖輸入框</h2>
+                <h2 class="text-lg font-black text-blue-800">✍️ 簽名解鎖輸入框</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
@@ -67,8 +70,42 @@
         </div>
     </div>
 
+    <!-- 專屬底部計算機鍵盤 Modal -->
+    <div id="calcModal" class="fixed inset-x-0 bottom-0 transform translate-y-full bg-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.2)] rounded-t-3xl z-[10001] max-w-md mx-auto">
+        <div class="p-4">
+            <div class="flex justify-between items-center mb-3">
+                <span id="calcTitle" class="font-bold text-gray-500 text-sm">正在計算：床單</span>
+                <button onclick="closeCalc()" class="text-red-500 font-bold px-3 py-1 bg-red-50 rounded-lg">關閉</button>
+            </div>
+            <!-- 算式顯示區 -->
+            <div id="calcDisplay" class="w-full bg-white border-2 border-blue-400 rounded-xl h-16 mb-4 flex items-center justify-end px-4 text-3xl font-black text-gray-800 tracking-wider overflow-hidden">
+                0
+            </div>
+            <!-- 鍵盤按鈕區 -->
+            <div class="grid grid-cols-4 gap-2 h-64">
+                <button onclick="calcPress('7')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">7</button>
+                <button onclick="calcPress('8')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">8</button>
+                <button onclick="calcPress('9')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">9</button>
+                <button onclick="calcPress('+')" class="calc-btn bg-blue-100 text-blue-700 rounded-xl text-3xl font-bold shadow-sm border border-blue-200">＋</button>
+                
+                <button onclick="calcPress('4')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">4</button>
+                <button onclick="calcPress('5')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">5</button>
+                <button onclick="calcPress('6')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">6</button>
+                <button onclick="calcPress('-')" class="calc-btn bg-red-100 text-red-700 rounded-xl text-3xl font-bold shadow-sm border border-red-200">－</button>
+                
+                <button onclick="calcPress('1')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">1</button>
+                <button onclick="calcPress('2')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">2</button>
+                <button onclick="calcPress('3')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">3</button>
+                <button onclick="calcBackspace()" class="calc-btn bg-gray-200 text-gray-700 rounded-xl text-xl font-bold shadow-sm">退格</button>
+                
+                <button onclick="calcClear()" class="calc-btn bg-gray-200 text-gray-700 rounded-xl text-xl font-bold shadow-sm">清除</button>
+                <button onclick="calcPress('0')" class="calc-btn bg-white rounded-xl text-2xl font-bold shadow-sm border border-gray-200">0</button>
+                <button onclick="calcConfirm()" class="calc-btn col-span-2 bg-green-600 text-white rounded-xl text-xl font-bold shadow-sm">確定並儲存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // ★★★ 維持您的專屬 API 網址 ★★★
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         let masterData = []; 
@@ -80,6 +117,9 @@
         const canvas = document.getElementById('signCanvas');
         const ctx = canvas.getContext('2d');
         let painting = false;
+
+        // 計算機變數
+        let calcExpr = "";
 
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -94,14 +134,13 @@
                 const data = await res.json();
                 
                 masterData = data.template || [];
-                if (masterData.length === 0) throw new Error("後台大腦「基礎設定」分頁尚未填寫資料！");
+                if (masterData.length === 0) throw new Error("後台無資料");
                 
                 if (data.records) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
-                        // 狀態判斷：只要有數量，就代表已經「送出完成」；只要有簽名或數量，代表已「解鎖簽名」
                         let isSub = r.count && String(r.count).trim() !== "" ? true : false;
                         let hasSig = r.signature || isSub ? true : false; 
 
@@ -117,7 +156,7 @@
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
                 filterHotels(); 
             } catch (error) {
-                document.getElementById('itemsList').innerHTML = `<div class="text-red-500 text-center mt-6 font-bold">同步失敗 😭</div><div class="text-xs text-gray-400 text-center px-4 mt-1">${error.message}</div>`;
+                document.getElementById('itemsList').innerHTML = `<div class="text-red-500 text-center mt-6 font-bold">同步失敗</div>`;
             }
         }
 
@@ -148,6 +187,20 @@
             userInputs[date][category][item][field] = value;
         }
 
+        // 點擊數量框的防呆邏輯
+        function handleItemClick(hotel, item) {
+            const dateStr = document.getElementById('datePicker').value;
+            const hasSigned = userInputs[dateStr]?.[hotel]?.[item]?.hasSigned;
+            
+            if (!hasSigned) {
+                alert("🔒 請先點擊下方藍色按鈕【✍️ 第一步：點此簽名解鎖】！");
+                return; // 完全阻擋
+            }
+            
+            // 如果已簽名，打開自訂計算機
+            openCalc(hotel, item);
+        }
+
         function renderItems() {
             const dateStr = document.getElementById('datePicker').value;
             const cat = document.getElementById('hotelSelect').value;
@@ -160,43 +213,48 @@
                 const hasSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned || false;
                 const isSubmitted = userInputs[dateStr]?.[d.hotel]?.[d.item]?.isSubmitted || false;
                 
-                // 動態按鈕與狀態
                 let actionButton = "";
-                let inputStateClass = hasSigned ? "bg-transparent text-blue-600 border-blue-400" : "locked-input";
-                let noteStateClass = hasSigned ? "bg-gray-50 text-gray-800" : "locked-input";
-                let placeholderText = hasSigned ? "0" : "🔒";
-                let notePlaceholderText = hasSigned ? "有破損或短少？請寫備註..." : "🔒 請先簽名解鎖...";
+                // 視覺樣式
+                let numDisplayClass = hasSigned ? "bg-white text-blue-700 border-blue-500 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
+                let numText = count !== "" ? count : (hasSigned ? "點此輸入" : "🔒 鎖定");
 
                 if (isSubmitted) {
-                    actionButton = `<button onclick="submitItem('${d.hotel}', '${d.item}')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-sm">✅ 已成功送出 (可修改後再次送出)</button>`;
+                    actionButton = `<div class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-center border border-green-200">✅ 數量已自動儲存至總部</div>`;
                 } else if (hasSigned) {
-                    actionButton = `<button onclick="submitItem('${d.hotel}', '${d.item}')" class="w-full py-3 bg-orange-500 text-white rounded-lg font-bold shadow-md animate-pulse text-lg">📤 第二步：確認數量並送出</button>`;
+                    actionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-center border border-orange-200 animate-pulse">👆 請點擊上方數量框輸入數字</div>`;
                 } else {
-                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm">✍️ 第一步：點此簽名解鎖</button>`;
+                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md text-lg">✍️ 第一步：點此簽名解鎖</button>`;
                 }
 
                 return `
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="font-bold text-2xl text-gray-900">${d.item}</span>
-                        <input type="text" inputmode="numeric" 
-                            oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'count', this.value)" 
-                            value="${count}" 
-                            ${!hasSigned ? 'disabled' : ''}
-                            class="w-20 p-1 text-right font-black text-2xl border-b-2 outline-none ${inputStateClass}" 
-                            placeholder="${placeholderText}">
+                <div class="bg-white p-4 rounded-2xl shadow border border-gray-200 mb-4 relative overflow-hidden">
+                    ${!hasSigned ? '<div class="absolute inset-0 bg-gray-50/50 pointer-events-none z-10"></div>' : ''}
+                    
+                    <div class="flex justify-between items-center mb-3 relative z-20">
+                        <span class="font-black text-2xl text-gray-800">${d.item}</span>
+                        <!-- ★ 這裡廢除 input，改成 div 按鈕，絕對不會彈出手機鍵盤！ -->
+                        <div onclick="handleItemClick('${d.hotel}', '${d.item}')" class="px-4 py-2 text-right font-black text-2xl border-b-4 rounded-t-lg cursor-pointer min-w-[80px] ${numDisplayClass}">
+                            ${numText}
+                        </div>
                     </div>
+                    
+                    <!-- 備註欄 (離開焦點時自動儲存) -->
                     <input type="text" 
-                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)" 
+                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)"
+                        onchange="if(${hasSigned}) submitItemToServer('${d.hotel}', '${d.item}')"
                         value="${note}" 
                         ${!hasSigned ? 'disabled' : ''}
-                        class="w-full p-2 mb-3 border border-gray-200 rounded-lg text-sm outline-none ${noteStateClass}" 
-                        placeholder="${notePlaceholderText}">
-                    ${actionButton}
+                        class="w-full p-3 mb-4 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20" 
+                        placeholder="${hasSigned ? "有短少或破損？寫完點旁邊自動存" : "🔒 解鎖後可寫備註"}">
+                    
+                    <div class="relative z-20">
+                        ${actionButton}
+                    </div>
                 </div>`;
             }).join('');
         }
 
+        // ================= 簽名板邏輯 =================
         function setupCanvas() {
             canvas.isModified = false;
             function start(e) { painting = true; draw(e); }
@@ -215,98 +273,120 @@
         }
         setupCanvas();
 
-        function clearCanvas() { 
-            ctx.clearRect(0, 0, canvas.width, canvas.height); 
-            canvas.isModified = true;
-        }
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); canvas.isModified = true; }
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
         
         function openSign(category, item) { 
             activeCategory = category; activeItem = item; 
             document.getElementById('signModal').classList.remove('hidden'); 
-
             const dateStr = document.getElementById('datePicker').value;
             const existingSig = userInputs[dateStr]?.[category]?.[item]?.signature;
 
             requestAnimationFrame(() => {
-                canvas.width = canvas.offsetWidth; canvas.height = 220;
-                canvas.isModified = false; 
-                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+                canvas.width = canvas.offsetWidth; canvas.height = 220; canvas.isModified = false; 
+                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, canvas.width, canvas.height);
                 if (existingSig) {
-                    let img = new Image();
-                    img.onload = () => ctx.drawImage(img, 0, 0);
-                    img.src = existingSig;
+                    let img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0); img.src = existingSig;
                 }
             });
         }
 
-        // 新增：只確認簽名，不立刻送出，而是解鎖輸入框
         function confirmSignature() {
             const dateStr = document.getElementById('datePicker').value;
             const existingSig = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.signature || '';
-            
             let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
             
-            if (isBlank && !existingSig) {
-                return alert("請先在空白處簽名，才能解鎖輸入框喔！");
-            }
+            if (isBlank && !existingSig) return alert("請先在空白處簽名，才能解鎖輸入框喔！");
 
             let sigBase64 = isBlank ? existingSig : canvas.toDataURL();
-            
             handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
-            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 標記為已簽名(解鎖)
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 解鎖
             
             closeSign();
-            renderItems(); // 重新渲染，此時輸入框就會亮起解鎖
+            renderItems(); // 畫面解鎖，可以開始用計算機了
         }
 
-        // 修改：獨立的送出按鈕，檢查數量與簽名
-        function submitItem(category, item) {
+        // ================= 計算機鍵盤邏輯 =================
+        function openCalc(hotel, item) {
+            activeCategory = hotel; activeItem = item;
+            const dateStr = document.getElementById('datePicker').value;
+            document.getElementById('calcTitle').innerText = `正在盤點：${item}`;
+            
+            // 載入舊數字
+            calcExpr = String(userInputs[dateStr]?.[hotel]?.[item]?.count || "");
+            if(calcExpr === "0") calcExpr = "";
+            document.getElementById('calcDisplay').innerText = calcExpr || "0";
+            
+            document.getElementById('calcModal').classList.remove('translate-y-full');
+        }
+
+        function closeCalc() {
+            document.getElementById('calcModal').classList.add('translate-y-full');
+        }
+
+        function calcPress(val) {
+            calcExpr += val;
+            document.getElementById('calcDisplay').innerText = calcExpr;
+        }
+
+        function calcBackspace() {
+            calcExpr = calcExpr.slice(0, -1);
+            document.getElementById('calcDisplay').innerText = calcExpr || "0";
+        }
+
+        function calcClear() {
+            calcExpr = "";
+            document.getElementById('calcDisplay').innerText = "0";
+        }
+
+        function calcConfirm() {
+            let finalValue = 0;
+            try {
+                // 安全的計算邏輯 (過濾掉非數字和加減號的字元)
+                if (/^[0-9\+\-]+$/.test(calcExpr)) {
+                    finalValue = eval(calcExpr); // 自動算出結果
+                } else {
+                    finalValue = parseInt(calcExpr) || 0;
+                }
+            } catch (e) { finalValue = 0; }
+
+            const dateStr = document.getElementById('datePicker').value;
+            handleInput(dateStr, activeCategory, activeItem, 'count', finalValue);
+            
+            closeCalc();
+            renderItems(); // 更新畫面上的數字
+            
+            // ★ 計算完成後，自動把資料丟到背景上傳！完全防呆！
+            submitItemToServer(activeCategory, activeItem);
+        }
+
+        // ================= 背景自動上傳邏輯 =================
+        function submitItemToServer(category, item) {
             const dateStr = document.getElementById('datePicker').value;
             const countVal = userInputs[dateStr]?.[category]?.[item]?.count || 0;
             const noteVal = userInputs[dateStr]?.[category]?.[item]?.note || '';
             const sigBase64 = userInputs[dateStr]?.[category]?.[item]?.signature || '';
             
-            if(!countVal || countVal === "0" || String(countVal).trim() === "") {
-                return alert("簽名已完成解鎖！\n請填寫「盤點數量」後再按下送出！");
-            }
-            if(!sigBase64) {
-                return alert("系統異常：找不到您的簽名，請重新簽名！");
-            }
+            if(!countVal || countVal === "0" || String(countVal).trim() === "") return; // 沒數字不存
+            if(!sigBase64) return; // 沒簽名不存
 
-            // 尋找按鈕並變成載入中狀態 (利用事件物件或重新渲染來防連點)
             const payload = { 
-                type: 'inventory', 
-                date: dateStr, 
-                hotel: category, 
-                item: item, 
-                count: countVal, 
-                note: noteVal, 
-                signature: sigBase64,
-                timestamp: new Date().toLocaleString() 
+                type: 'inventory', date: dateStr, hotel: category, item: item, 
+                count: countVal, note: noteVal, signature: sigBase64, timestamp: new Date().toLocaleString() 
             };
             
             fetch(API_URL, { 
-                method: 'POST',
-                mode: 'no-cors',
+                method: 'POST', mode: 'no-cors',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(payload) 
             })
             .then(() => {
-                handleInput(dateStr, category, item, 'isSubmitted', true); // 標記為已成功送出
+                handleInput(dateStr, category, item, 'isSubmitted', true); // 變成綠色勾勾
                 renderItems();
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); 
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
-            })
-            .catch(err => {
-                // 離線防護
-                handleInput(dateStr, category, item, 'isSubmitted', true);
-                renderItems();
-                alert("網路不穩！但資料已暫存於手機，請在網路良好時重整頁面確認。");
-            });
+            }).catch(e => console.log("暫存本地等待連線"));
         }
         
         init();
