@@ -55,12 +55,12 @@
         </div>
     </div>
 
-    <!-- 簽名板 Modal (第一步：強制簽名) -->
+    <!-- 簽名板 Modal -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-2xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg font-black text-blue-800">✍️ 簽名解鎖輸入框</h2>
-                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重寫</button>
+                <h2 id="signModalTitle" class="text-lg font-black text-blue-800">✍️ 簽名解鎖輸入框</h2>
+                <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-3 py-1 rounded bg-red-50 border border-red-200 shadow-sm active:bg-red-100">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
             <div class="mt-4 flex gap-2">
@@ -142,9 +142,7 @@
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
                         let isSub = r.count && String(r.count).trim() !== "" ? true : false;
-                        
-                        // ★ 載入時，只要是已經存檔過的資料，一律視為「未解鎖 (hasSigned=false)」
-                        let hasSig = false; 
+                        let hasSig = false; // 初始化一律為未解鎖狀態
 
                         userInputs[r.date][r.hotel][r.item] = { 
                             count: r.count, 
@@ -189,18 +187,16 @@
             userInputs[date][category][item][field] = value;
         }
 
-        // ★ 點擊數量框的防呆邏輯
         function handleItemClick(hotel, item) {
             const dateStr = document.getElementById('datePicker').value;
             const hasSigned = userInputs[dateStr]?.[hotel]?.[item]?.hasSigned;
             
-            // 如果未簽名（或是送出後被鎖死），直接打開簽名板要求簽名
+            // 未簽名(鎖死狀態) -> 打開簽名板要求簽名
             if (!hasSigned) {
                 openSign(hotel, item);
                 return; 
             }
-            
-            // 如果已簽名解鎖，直接打開計算機
+            // 已簽名解鎖 -> 直接打開計算機
             openCalc(hotel, item);
         }
 
@@ -217,18 +213,14 @@
                 const isSubmitted = userInputs[dateStr]?.[d.hotel]?.[d.item]?.isSubmitted || false;
                 
                 let actionButton = "";
-                // 視覺樣式
                 let numDisplayClass = hasSigned ? "bg-white text-blue-700 border-blue-500 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
                 let numText = count !== "" ? count : (hasSigned ? "點此輸入" : "🔒 點此簽名");
 
                 if (isSubmitted && !hasSigned) {
-                    // 已存檔，且目前為鎖定狀態
                     actionButton = `<div class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-center border border-green-200 shadow-sm">✅ 已存檔 (修改需點擊上方重新簽名)</div>`;
                 } else if (hasSigned) {
-                    // 已簽名解鎖，正在編輯
                     actionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-center border border-orange-200 animate-pulse">👆 請點擊上方數量框輸入數字</div>`;
                 } else {
-                    // 完全沒動過的初始狀態
                     actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md text-lg">✍️ 點此簽名解鎖輸入框</button>`;
                 }
 
@@ -258,10 +250,18 @@
             }).join('');
         }
 
-        // ================= 簽名板邏輯 =================
+        // ================= 簽名板與鎖死邏輯 =================
         function setupCanvas() {
             canvas.isModified = false;
-            function start(e) { painting = true; draw(e); }
+            canvas.isLocked = false; 
+
+            function start(e) { 
+                if (canvas.isLocked) {
+                    alert("🔒 必須重新簽名才能修改數量！\n👉 請先點擊右上角的【清除重寫】按鈕。");
+                    return;
+                }
+                painting = true; draw(e); 
+            }
             function draw(e) {
                 if(!painting) return; e.preventDefault(); 
                 canvas.isModified = true;
@@ -271,13 +271,24 @@
                 ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
             }
             function stop() { painting = false; ctx.beginPath(); }
+            
             canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
             canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
             canvas.addEventListener('mouseup', stop); canvas.addEventListener('touchend', stop);
         }
         setupCanvas();
 
-        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); canvas.isModified = true; }
+        function clearCanvas() { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            canvas.isModified = true; 
+            
+            // ★ 按下清除後，徹底解除畫布鎖定，並改回正常標題
+            canvas.isLocked = false; 
+            const titleEl = document.getElementById('signModalTitle');
+            titleEl.innerText = "✍️ 請簽上新名字";
+            titleEl.className = "text-lg font-black text-blue-800";
+        }
+
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
         
         function openSign(category, item) { 
@@ -286,6 +297,7 @@
 
             const dateStr = document.getElementById('datePicker').value;
             const existingSig = userInputs[dateStr]?.[category]?.[item]?.signature;
+            const isSubmitted = userInputs[dateStr]?.[category]?.[item]?.isSubmitted;
 
             requestAnimationFrame(() => {
                 canvas.width = canvas.offsetWidth; canvas.height = 220;
@@ -293,7 +305,18 @@
                 ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 如果之前有簽名，自動帶入方便快速修改
+                // ★ 鎖定防禦機制：如果是已經送出過的，強迫鎖死畫布
+                canvas.isLocked = (isSubmitted && existingSig) ? true : false;
+
+                const titleEl = document.getElementById('signModalTitle');
+                if (canvas.isLocked) {
+                    titleEl.innerText = "🔒 請先按【清除重寫】才能修改";
+                    titleEl.className = "text-lg font-black text-red-600 animate-pulse";
+                } else {
+                    titleEl.innerText = "✍️ 簽名解鎖輸入框";
+                    titleEl.className = "text-lg font-black text-blue-800";
+                }
+
                 if (existingSig) {
                     let img = new Image();
                     img.onload = () => ctx.drawImage(img, 0, 0);
@@ -302,28 +325,28 @@
             });
         }
 
-        // ★ 簽名完自動轉跳計算機
         function confirmSignature() {
-            const dateStr = document.getElementById('datePicker').value;
-            const existingSig = userInputs[dateStr]?.[activeCategory]?.[activeItem]?.signature || '';
-            
+            // ★ 如果畫布還在鎖死狀態，絕對不讓阿姨送出
+            if (canvas.isLocked) {
+                return alert("🔒 您尚未重新簽名！\n👉 請先點擊右上角的【清除重寫】並簽上新名字，才能解鎖修改數量。");
+            }
+
             let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
-            
-            if (isBlank && !existingSig) {
+            if (isBlank) {
                 return alert("請先在空白處簽名，才能解鎖輸入框喔！");
             }
 
-            let sigBase64 = isBlank ? existingSig : canvas.toDataURL();
+            // 因為強迫清除了，所以這裡永遠抓最新的畫布內容
+            let sigBase64 = canvas.toDataURL();
             
+            const dateStr = document.getElementById('datePicker').value;
             handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
-            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 標記為已簽名(解鎖)
-            handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); // 解除送出狀態，進入編輯模式
+            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); // 標記為已解鎖
+            handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); 
             
             closeSign();
             renderItems(); 
-            
-            // 自動開啟底部的計算機
-            openCalc(activeCategory, activeItem);
+            openCalc(activeCategory, activeItem); // 轉跳計算機
         }
 
         // ================= 計算機鍵盤邏輯 =================
@@ -373,7 +396,6 @@
             
             closeCalc();
             renderItems(); 
-            
             submitItemToServer(activeCategory, activeItem);
         }
 
@@ -399,19 +421,16 @@
             })
             .then(() => {
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
-                // ★ 送出成功後，強制將狀態改為未簽名 (鎖死欄位)
-                handleInput(dateStr, category, item, 'hasSigned', false); 
+                handleInput(dateStr, category, item, 'hasSigned', false); // 存檔完畢，再次鎖死
                 
                 renderItems();
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); 
                 setTimeout(() => toast.classList.add('opacity-0'), 2000);
             }).catch(e => {
-                // 離線也先鎖死
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
                 handleInput(dateStr, category, item, 'hasSigned', false); 
                 renderItems();
-                console.log("暫存本地等待連線");
             });
         }
         
