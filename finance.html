@@ -10,23 +10,48 @@
         .filter-section { border: 1px solid #aaa; padding: 15px; margin-bottom: 20px; background-color: #f4f4f4; }
         .filter-item { display: inline-block; margin-right: 20px; margin-bottom: 10px; }
         .filter-item label { font-weight: bold; margin-right: 5px; }
-        .filter-item input { padding: 4px 8px; border: 1px solid #ccc; font-size: 14px; }
+        .filter-item input, .filter-item select { padding: 4px 8px; border: 1px solid #ccc; font-size: 14px; background-color: #fff; }
         button { padding: 6px 15px; border: 1px solid #555; background-color: #e0e0e0; cursor: pointer; font-weight: bold; margin-right: 10px; }
         button:hover { background-color: #ccc; }
-
-        .excel-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        .excel-table th, .excel-table td { border: 1px solid #000; padding: 8px 10px; text-align: left; }
-        .excel-table th { background-color: #e2efda; font-weight: bold; text-align: center; } /* 經典 Excel 綠色表頭 */
+        
+        .excel-table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; }
+        .excel-table th, .excel-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+        .excel-table th { background-color: #e2efda; font-weight: bold; text-align: center; } 
+        
+        /* 針對特定欄位設定寬度，確保部門名稱不折行 */
+        .col-date { width: 90px; text-align: center; }
+        .col-dept { width: auto; white-space: nowrap; } /* 超寬，不折行 */
+        .col-item { width: 150px; }
+        .col-qty { width: 80px; text-align: right; }
+        .col-price { width: 80px; text-align: right; }
+        .col-amount { width: 110px; text-align: right; }
 
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        .total-row { font-weight: bold; background-color: #ffffcc; } /* 總計行底色 */
+        .text-bold { font-weight: bold; }
+        
+        /* 匯總表專屬樣式 */
+        .summary-title { font-size: 20px; font-weight: bold; margin-top: 50px; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 5px; }
+        .dept-header th { background-color: #d9e1f2 !important; font-size: 16px; text-align: left; padding: 10px !important;}
+        .subtotal-row td { font-weight: bold; background-color: #fce4d6; } /* 小計底色 */
+        .grand-total-table { width: 50%; margin-left: 0; border: 2px solid #000; margin-top: 20px; }
+        .grand-total-row td { font-weight: bold; background-color: #ffffcc; font-size: 16px;} /* 總計底色 */
+        .tax-row td { font-weight: bold; background-color: #ddebf7; font-size: 16px; color: #c00000;} /* 含稅底色 */
+
         .msg-box { padding: 20px; text-align: center; font-weight: bold; border: 1px solid #aaa; margin-top: 20px; }
 
         @media print {
             .no-print { display: none !important; }
             body { padding: 0; }
             .excel-table th, .excel-table td { border: 1px solid #000 !important; }
+            /* 列印時強制套用背景色 */
+            .excel-table th { background-color: #e2efda !important; -webkit-print-color-adjust: exact; }
+            .dept-header th { background-color: #d9e1f2 !important; -webkit-print-color-adjust: exact; }
+            .subtotal-row td { background-color: #fce4d6 !important; -webkit-print-color-adjust: exact; }
+            .grand-total-row td { background-color: #ffffcc !important; -webkit-print-color-adjust: exact; }
+            .tax-row td { background-color: #ddebf7 !important; -webkit-print-color-adjust: exact; }
+            /* 避免部門表格被切斷在兩頁之間 */
+            .dept-summary-table { page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -34,25 +59,24 @@
 
     <div class="no-print filter-section">
         <h2 style="margin-top: 0;">百麒物流 財務結帳查詢</h2>
-
-        <!-- ============================================== -->
-        <!-- 💡 篩選控制列：若未來需要增加篩選條件 (例如：品項) -->
-        <!-- 💡 可以在此區塊新增下拉選單或 input 標籤          -->
-        <!-- ============================================== -->
+        
         <div class="filter-item">
             <label>選擇月份：</label>
             <input type="month" id="monthPicker">
         </div>
+        
+        <!-- 新增的下拉選單 -->
         <div class="filter-item">
-            <label>搜尋飯店 / 部門：</label>
-            <input type="text" id="hotelSearch" placeholder="例如：H2O">
+            <label>選擇飯店：</label>
+            <select id="hotelSelect">
+                <option value="">-- 載入中 --</option>
+            </select>
         </div>
-        <!-- 範例：未來若要加品項篩選，可以加上這行
+
         <div class="filter-item">
-            <label>品項名稱：</label>
-            <input type="text" id="itemSearch" placeholder="例如：床單">
+            <label>關鍵字 (選填)：</label>
+            <input type="text" id="hotelSearch" placeholder="例如：房務部">
         </div>
-        -->
 
         <br>
         <button onclick="fetchData()">載入報表</button>
@@ -71,11 +95,29 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
-        window.onload = function() {
+        window.onload = async function() {
+            // 預設填入當月
             const today = new Date();
             const monthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
             document.getElementById('monthPicker').value = monthStr;
-            document.getElementById('printHeader').style.display = 'none'; // 預設隱藏報表標題
+            document.getElementById('printHeader').style.display = 'none'; 
+
+            // 自動載入下拉選單的飯店清單
+            try {
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                const data = await res.json();
+                if(data.template) {
+                    // 提取所有飯店的字首名稱 (用空白切割)
+                    let hotels = [...new Set(data.template.map(d => d.hotel.split(' ')[0]))];
+                    let selectHtml = `<option value="">-- 顯示全部 --</option>`;
+                    hotels.forEach(h => {
+                        if(h) selectHtml += `<option value="${h}">${h}</option>`;
+                    });
+                    document.getElementById('hotelSelect').innerHTML = selectHtml;
+                }
+            } catch(e) {
+                document.getElementById('hotelSelect').innerHTML = `<option value="">無法載入選單</option>`;
+            }
         };
 
         document.getElementById('hotelSearch').addEventListener('keypress', function (e) {
@@ -84,22 +126,26 @@
 
         async function fetchData() {
             const month = document.getElementById('monthPicker').value;
-            const hotel = document.getElementById('hotelSearch').value.trim();
+            const selectedHotel = document.getElementById('hotelSelect').value;
+            const searchKeyword = document.getElementById('hotelSearch').value.trim();
             const container = document.getElementById('resultsContainer');
+            
+            // 將選單與關鍵字結合 (例如：H2O 房務部)
+            let queryHotel = (selectedHotel + " " + searchKeyword).trim();
 
             document.getElementById('printHeader').style.display = 'block';
-            document.getElementById('printInfo').innerText = `結算月份：${month} ${hotel ? ' | 篩選：' + hotel : ''}`;
+            document.getElementById('printInfo').innerText = `結算月份：${month} ${queryHotel ? ' | 篩選條件：' + queryHotel : ''}`;
             container.innerHTML = `<div class="msg-box no-print">⚙️ 資料讀取與計算中...</div>`;
-
+            
             try {
-                const res = await fetch(`${API_URL}?action=getFinanceData&month=${month}&hotel=${hotel}&t=${new Date().getTime()}`);
+                const res = await fetch(`${API_URL}?action=getFinanceData&month=${month}&hotel=${queryHotel}&t=${new Date().getTime()}`);
                 const data = await res.json();
-
+                
                 if(!data.records || data.records.length === 0) {
                     container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已簽收的點交紀錄。</div>`;
                     return;
                 }
-
+                
                 processData(data.records, data.prices || {});
             } catch(err) {
                 container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：${err.message}</div>`;
@@ -108,12 +154,12 @@
 
         function processData(records, priceMap) {
             let reportData = [];
-
+            
+            // 1. 扁平化資料
             records.forEach(record => {
                 let items = [];
                 try { items = JSON.parse(record.verifyJson); } catch(e) { return; }
-
-                // 只呈現雙方簽收完畢的帳單
+                
                 if (!record.clientSig || !record.driverSig) return;
 
                 let dateStr = record.date || "";
@@ -121,10 +167,9 @@
 
                 items.forEach(item => {
                     let qty = parseInt(item.actualQty) || 0;
-                    if (qty === 0) return; // 數量為 0 不列入請款
+                    if (qty === 0) return; 
 
                     let itemName = item.itemName || "";
-                    // 從後台抓取對應的單價
                     let unitPrice = priceMap[deptStr + "_" + itemName] !== undefined ? priceMap[deptStr + "_" + itemName] : (priceMap[itemName] || 0);
 
                     reportData.push({
@@ -143,49 +188,136 @@
                 return;
             }
 
-            // 依日期與部門排序
+            // 2. 產生日流水帳明細表
             reportData.sort((a, b) => a.date.localeCompare(b.date) || a.dept.localeCompare(b.dept));
 
-            let grandTotal = 0;
-            let rowsHtml = reportData.map(row => {
-                let subtotal = row.qty * row.price;
-                grandTotal += subtotal;
-
-                return `
-                <tr>
-                    <td class="text-center">${row.date}</td>
-                    <td>${row.dept}</td>
-                    <td>${row.item}</td>
-                    <td class="text-right">${row.qty}</td>
-                    <td class="text-right">${row.price}</td>
-                    <td class="text-right">${subtotal.toLocaleString()}</td>
-                </tr>
-                `;
-            }).join('');
-
-            document.getElementById('resultsContainer').innerHTML = `
+            let html = `
                 <table class="excel-table">
                     <thead>
                         <tr>
-                            <th style="width: 120px;">點交日期</th>
-                            <th>飯店 / 部門</th>
-                            <th>品項名稱</th>
-                            <th style="width: 80px;">數量</th>
-                            <th style="width: 80px;">單價</th>
-                            <th style="width: 120px;">金額</th>
+                            <th class="col-date">點交日期</th>
+                            <th class="col-dept">飯店 / 部門</th>
+                            <th class="col-item">品項名稱</th>
+                            <th class="col-qty">數量</th>
+                            <th class="col-price">單價</th>
+                            <th class="col-amount">金額</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                    <tfoot>
-                        <tr class="total-row">
-                            <td colspan="5" class="text-right">總計金額：</td>
-                            <td class="text-right">${grandTotal.toLocaleString()}</td>
+            `;
+
+            reportData.forEach(row => {
+                let subtotal = row.qty * row.price;
+                html += `
+                <tr>
+                    <td class="col-date">${row.date}</td>
+                    <td class="col-dept">${row.dept}</td>
+                    <td class="col-item">${row.item}</td>
+                    <td class="col-qty">${row.qty}</td>
+                    <td class="col-price">${row.price}</td>
+                    <td class="col-amount">${subtotal.toLocaleString()}</td>
+                </tr>
+                `;
+            });
+            html += `</tbody></table>`;
+
+            // ==========================================
+            // 3. 產生「依部門拆分」的精細匯總表
+            // ==========================================
+            
+            // 將資料依據 "部門 -> 品項" 進行分組加總
+            let summaryByDept = {};
+            reportData.forEach(row => {
+                if (!summaryByDept[row.dept]) {
+                    summaryByDept[row.dept] = {};
+                }
+                if (!summaryByDept[row.dept][row.item]) {
+                    summaryByDept[row.dept][row.item] = { qty: 0, price: row.price, amount: 0 };
+                }
+                summaryByDept[row.dept][row.item].qty += row.qty;
+                summaryByDept[row.dept][row.item].amount += (row.qty * row.price);
+            });
+
+            let summaryHtml = `<div class="summary-title">📊 本月各部門品項結算匯總表</div>`;
+            let grandTotalAmount = 0;
+
+            // 取出所有部門並排序
+            let sortedDepts = Object.keys(summaryByDept).sort();
+            
+            // 為每個部門獨立產生一張表格
+            sortedDepts.forEach(dept => {
+                summaryHtml += `
+                    <table class="excel-table dept-summary-table" style="width: 70%; margin-left: 0; margin-bottom: 25px;">
+                        <thead>
+                            <tr class="dept-header">
+                                <th colspan="4">🏨 ${dept}</th>
+                            </tr>
+                            <tr>
+                                <th class="col-item">品項名稱</th>
+                                <th class="col-qty">總數量</th>
+                                <th class="col-price">單價</th>
+                                <th class="col-amount">總金額 (未稅)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                let deptItems = Object.keys(summaryByDept[dept]).sort();
+                let deptSubtotalQty = 0;
+                let deptSubtotalAmount = 0;
+
+                // 印出該部門的每個品項
+                deptItems.forEach(item => {
+                    let data = summaryByDept[dept][item];
+                    deptSubtotalQty += data.qty;
+                    deptSubtotalAmount += data.amount;
+                    grandTotalAmount += data.amount;
+
+                    summaryHtml += `
+                    <tr>
+                        <td>${item}</td>
+                        <td class="text-right">${data.qty}</td>
+                        <td class="text-right">${data.price}</td>
+                        <td class="text-right">${data.amount.toLocaleString()}</td>
+                    </tr>
+                    `;
+                });
+
+                // 印出該部門專屬小計
+                summaryHtml += `
+                        </tbody>
+                        <tfoot>
+                            <tr class="subtotal-row">
+                                <td class="text-right">【${dept}】 小計：</td>
+                                <td class="text-right">${deptSubtotalQty}</td>
+                                <td></td>
+                                <td class="text-right">${deptSubtotalAmount.toLocaleString()}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                `;
+            });
+
+            // 4. 最底部的全廠總結表 (未稅與含稅)
+            let taxAmount = Math.round(grandTotalAmount * 0.05);
+            let totalWithTax = grandTotalAmount + taxAmount;
+
+            summaryHtml += `
+                <table class="excel-table grand-total-table">
+                    <tbody>
+                        <tr class="grand-total-row">
+                            <td class="text-right" style="width: 60%;">全廠總計 (未稅)：</td>
+                            <td class="text-right" style="width: 40%;">${grandTotalAmount.toLocaleString()}</td>
                         </tr>
-                    </tfoot>
+                        <tr class="tax-row">
+                            <td class="text-right">總計 (含稅 5%)：</td>
+                            <td class="text-right">${totalWithTax.toLocaleString()}</td>
+                        </tr>
+                    </tbody>
                 </table>
             `;
+
+            document.getElementById('resultsContainer').innerHTML = html + summaryHtml;
         }
     </script>
 </body>
