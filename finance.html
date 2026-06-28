@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>百麒物流 - 財務結帳報表</title>
     <style>
-        /* 最純粹的 Excel 表格風格 */
         body { font-family: 'Arial', sans-serif; background-color: #fff; color: #000; padding: 20px; font-size: 14px; }
         .filter-section { border: 1px solid #aaa; padding: 15px; margin-bottom: 20px; background-color: #f4f4f4; }
         .filter-item { display: inline-block; margin-right: 20px; margin-bottom: 10px; }
@@ -18,9 +17,8 @@
         .excel-table th, .excel-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
         .excel-table th { background-color: #e2efda; font-weight: bold; text-align: center; } 
         
-        /* 針對特定欄位設定寬度，確保部門名稱不折行 */
         .col-date { width: 90px; text-align: center; }
-        .col-dept { width: auto; white-space: nowrap; } /* 超寬，不折行 */
+        .col-dept { width: auto; white-space: nowrap; } 
         .col-item { width: 150px; }
         .col-qty { width: 80px; text-align: right; }
         .col-price { width: 80px; text-align: right; }
@@ -28,15 +26,13 @@
 
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        .text-bold { font-weight: bold; }
         
-        /* 匯總表專屬樣式 */
         .summary-title { font-size: 20px; font-weight: bold; margin-top: 50px; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 5px; }
         .dept-header th { background-color: #d9e1f2 !important; font-size: 16px; text-align: left; padding: 10px !important;}
-        .subtotal-row td { font-weight: bold; background-color: #fce4d6; } /* 小計底色 */
+        .subtotal-row td { font-weight: bold; background-color: #fce4d6; }
         .grand-total-table { width: 50%; margin-left: 0; border: 2px solid #000; margin-top: 20px; }
-        .grand-total-row td { font-weight: bold; background-color: #ffffcc; font-size: 16px;} /* 總計底色 */
-        .tax-row td { font-weight: bold; background-color: #ddebf7; font-size: 16px; color: #c00000;} /* 含稅底色 */
+        .grand-total-row td { font-weight: bold; background-color: #ffffcc; font-size: 16px;} 
+        .tax-row td { font-weight: bold; background-color: #ddebf7; font-size: 16px; color: #c00000;}
 
         .msg-box { padding: 20px; text-align: center; font-weight: bold; border: 1px solid #aaa; margin-top: 20px; }
 
@@ -44,13 +40,11 @@
             .no-print { display: none !important; }
             body { padding: 0; }
             .excel-table th, .excel-table td { border: 1px solid #000 !important; }
-            /* 列印時強制套用背景色 */
             .excel-table th { background-color: #e2efda !important; -webkit-print-color-adjust: exact; }
             .dept-header th { background-color: #d9e1f2 !important; -webkit-print-color-adjust: exact; }
             .subtotal-row td { background-color: #fce4d6 !important; -webkit-print-color-adjust: exact; }
             .grand-total-row td { background-color: #ffffcc !important; -webkit-print-color-adjust: exact; }
             .tax-row td { background-color: #ddebf7 !important; -webkit-print-color-adjust: exact; }
-            /* 避免部門表格被切斷在兩頁之間 */
             .dept-summary-table { page-break-inside: avoid; }
         }
     </style>
@@ -60,12 +54,16 @@
     <div class="no-print filter-section">
         <h2 style="margin-top: 0;">百麒物流 財務結帳查詢</h2>
         
+        <!-- 改成日期區間 -->
         <div class="filter-item">
-            <label>選擇月份：</label>
-            <input type="month" id="monthPicker">
+            <label>起始日期：</label>
+            <input type="date" id="startDatePicker">
+        </div>
+        <div class="filter-item">
+            <label>結束日期：</label>
+            <input type="date" id="endDatePicker">
         </div>
         
-        <!-- 新增的下拉選單 -->
         <div class="filter-item">
             <label>選擇飯店：</label>
             <select id="hotelSelect">
@@ -96,18 +94,18 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
         window.onload = async function() {
-            // 預設填入當月
+            // 預設填入當月 1 號到今天
             const today = new Date();
-            const monthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
-            document.getElementById('monthPicker').value = monthStr;
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            document.getElementById('startDatePicker').value = startOfMonth.toISOString().split('T')[0];
+            document.getElementById('endDatePicker').value = today.toISOString().split('T')[0];
             document.getElementById('printHeader').style.display = 'none'; 
 
-            // 自動載入下拉選單的飯店清單
             try {
                 const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                 const data = await res.json();
                 if(data.template) {
-                    // 提取所有飯店的字首名稱 (用空白切割)
                     let hotels = [...new Set(data.template.map(d => d.hotel.split(' ')[0]))];
                     let selectHtml = `<option value="">-- 顯示全部 --</option>`;
                     hotels.forEach(h => {
@@ -125,20 +123,21 @@
         });
 
         async function fetchData() {
-            const month = document.getElementById('monthPicker').value;
+            const startDate = document.getElementById('startDatePicker').value;
+            const endDate = document.getElementById('endDatePicker').value;
             const selectedHotel = document.getElementById('hotelSelect').value;
             const searchKeyword = document.getElementById('hotelSearch').value.trim();
             const container = document.getElementById('resultsContainer');
             
-            // 將選單與關鍵字結合 (例如：H2O 房務部)
             let queryHotel = (selectedHotel + " " + searchKeyword).trim();
 
             document.getElementById('printHeader').style.display = 'block';
-            document.getElementById('printInfo').innerText = `結算月份：${month} ${queryHotel ? ' | 篩選條件：' + queryHotel : ''}`;
+            document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate} ${queryHotel ? ' | 篩選條件：' + queryHotel : ''}`;
             container.innerHTML = `<div class="msg-box no-print">⚙️ 資料讀取與計算中...</div>`;
             
             try {
-                const res = await fetch(`${API_URL}?action=getFinanceData&month=${month}&hotel=${queryHotel}&t=${new Date().getTime()}`);
+                // 將 startDate 和 endDate 傳給後端
+                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${queryHotel}&t=${new Date().getTime()}`);
                 const data = await res.json();
                 
                 if(!data.records || data.records.length === 0) {
@@ -155,7 +154,6 @@
         function processData(records, priceMap) {
             let reportData = [];
             
-            // 1. 扁平化資料
             records.forEach(record => {
                 let items = [];
                 try { items = JSON.parse(record.verifyJson); } catch(e) { return; }
@@ -184,11 +182,10 @@
             });
 
             if (reportData.length === 0) {
-                document.getElementById('resultsContainer').innerHTML = `<div class="msg-box no-print">該月份尚無有效且已簽章的請款項目。</div>`;
+                document.getElementById('resultsContainer').innerHTML = `<div class="msg-box no-print">該區間內尚無有效且已簽章的請款項目。</div>`;
                 return;
             }
 
-            // 2. 產生日流水帳明細表
             reportData.sort((a, b) => a.date.localeCompare(b.date) || a.dept.localeCompare(b.dept));
 
             let html = `
@@ -221,11 +218,6 @@
             });
             html += `</tbody></table>`;
 
-            // ==========================================
-            // 3. 產生「依部門拆分」的精細匯總表
-            // ==========================================
-            
-            // 將資料依據 "部門 -> 品項" 進行分組加總
             let summaryByDept = {};
             reportData.forEach(row => {
                 if (!summaryByDept[row.dept]) {
@@ -241,10 +233,8 @@
             let summaryHtml = `<div class="summary-title">📊 本月各部門品項結算匯總表</div>`;
             let grandTotalAmount = 0;
 
-            // 取出所有部門並排序
             let sortedDepts = Object.keys(summaryByDept).sort();
             
-            // 為每個部門獨立產生一張表格
             sortedDepts.forEach(dept => {
                 summaryHtml += `
                     <table class="excel-table dept-summary-table" style="width: 70%; margin-left: 0; margin-bottom: 25px;">
@@ -266,7 +256,6 @@
                 let deptSubtotalQty = 0;
                 let deptSubtotalAmount = 0;
 
-                // 印出該部門的每個品項
                 deptItems.forEach(item => {
                     let data = summaryByDept[dept][item];
                     deptSubtotalQty += data.qty;
@@ -283,7 +272,6 @@
                     `;
                 });
 
-                // 印出該部門專屬小計
                 summaryHtml += `
                         </tbody>
                         <tfoot>
@@ -298,7 +286,6 @@
                 `;
             });
 
-            // 4. 最底部的全廠總結表 (未稅與含稅)
             let taxAmount = Math.round(grandTotalAmount * 0.05);
             let totalWithTax = grandTotalAmount + taxAmount;
 
