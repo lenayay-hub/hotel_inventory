@@ -14,7 +14,7 @@
 </head>
 <body class="p-3 pb-32 relative">
 
-    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000]">
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold">
         ✅ 點收簽單已成功更新！
     </div>
 
@@ -24,7 +24,7 @@
             <h1 id="hotelTitle" class="text-3xl font-black mb-1 mt-2">載入中...</h1>
             <p id="dateTitle" class="text-lg font-bold text-blue-200">出貨點收系統</p>
         </div>
-
+        
         <!-- 日期選擇區 -->
         <div class="bg-white p-4 rounded-b-2xl shadow-md mb-6 flex flex-col gap-3 border-t border-blue-900">
             <div class="relative w-full bg-blue-50 rounded-lg h-14 flex items-center justify-center border border-blue-200">
@@ -32,6 +32,7 @@
                 <div id="dateDisplay" class="w-full text-center font-bold text-xl pointer-events-none text-blue-900">載入中...</div>
                 <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="dateChanged()">
             </div>
+            <p class="text-center text-sm text-gray-400 font-bold">點擊上方可回溯查詢歷史點交紀錄</p>
         </div>
 
         <!-- 點交清單區 -->
@@ -44,7 +45,7 @@
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000] overflow-y-auto">
         <div class="bg-white p-5 rounded-2xl w-full max-w-sm my-auto">
             <h2 id="modalDeptTitle" class="text-xl font-black text-center text-blue-800 mb-4 border-b pb-2">部門名稱</h2>
-
+            
             <div class="mb-5">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold text-gray-800">1. 飯店端主管簽收</h2>
@@ -70,11 +71,11 @@
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
-
+        
         let currentHotel = "";
         let currentDate = "";
-        let groupedData = {};
-        let activeDeptKey = "";
+        let groupedData = {}; 
+        let activeDeptKey = ""; 
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
@@ -87,8 +88,8 @@
 
         function setupDateLimits() {
             const today = new Date();
-            const prevMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const prevMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1); 
+            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0); 
             const dp = document.getElementById('datePicker');
             dp.min = getLocalDateString(prevMonth);
             dp.max = getLocalDateString(nextMonth);
@@ -107,14 +108,14 @@
         async function init() {
             const urlParams = new URLSearchParams(window.location.search);
             currentHotel = urlParams.get('hotel');
-
+            
             if (!currentHotel || currentHotel.trim() === "") {
                 document.getElementById('hotelTitle').innerText = "連結錯誤";
                 document.getElementById('departmentsContainer').innerHTML = `
                     <div class="text-center py-16 bg-red-50 rounded-2xl border-2 border-red-200">
                         <span class="text-4xl block mb-2">🚫</span>
                         <div class="text-red-600 font-black text-xl mb-2">無效的存取連結</div>
-                        <div class="text-red-500 font-bold text-sm">請向物流單位索取專屬網址</div>
+                        <div class="text-red-500 font-bold text-sm">請向物流單位索取您所屬飯店的專屬點交網址</div>
                     </div>`;
                 return;
             }
@@ -126,11 +127,11 @@
 
         async function fetchData() {
             document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">載入資料中...</div>';
-            groupedData = {};
+            groupedData = {}; 
 
             try {
                 let fetchUrl = `${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`;
-
+                
                 const res = await fetch(fetchUrl);
                 const data = await res.json();
 
@@ -147,7 +148,7 @@
                 });
                 renderDepartments();
             } catch (err) {
-                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路</div>`;
+                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路連線</div>`;
             }
         }
 
@@ -172,8 +173,8 @@
                 let actionButton = "";
 
                 if (isCompleted) {
-                    // ★ 核心改動：完成後按鈕直接變成純文字標示
-                    actionButton = `<div class="w-full mt-2 py-4 text-green-700 font-black text-2xl text-center">✅ 已點收完畢</div>`;
+                    // ★ 雙方簽完名後，只顯示已點收完畢的文字，保留上方明細
+                    actionButton = `<div class="w-full mt-2 py-4 text-green-700 font-black text-2xl text-center bg-green-50 rounded-xl border-2 border-green-200">✅ 已點收完畢</div>`;
                 } else if (hasClientSig && !hasDriverSig) {
                     actionButton = `<button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-orange-500 text-white rounded-xl font-bold text-lg shadow-md animate-pulse">🚚 等待司機簽名確認</button>`;
                 } else if (!hasClientSig && hasDriverSig) {
@@ -192,13 +193,13 @@
                             </div>
                         </div>
                         ${item.auntNote ? `<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: ${item.auntNote}</div>` : ''}
-
+                        
                         <div class="bg-blue-50 p-3 rounded-lg">
                             <div class="flex justify-between items-center">
                                 <span class="font-bold text-gray-700">飯店實點：</span>
                                 <div class="flex items-center">
-                                    <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}"
-                                           class="w-20 p-1 text-right font-black text-2xl outline-none rounded ${isCompleted ? 'bg-transparent text-gray-600 pr-0' : 'bg-white border-b-2 border-blue-500 text-blue-700 shadow-sm'}"
+                                    <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}" 
+                                           class="w-20 p-1 text-right font-black text-2xl outline-none rounded ${isCompleted ? 'bg-transparent text-gray-600 pr-0' : 'bg-white border-b-2 border-blue-500 text-blue-700 shadow-sm'}" 
                                            ${isCompleted ? 'disabled' : ''}>
                                     <span id="status-${dept}-${idx}" class="text-green-600 font-bold ml-3 text-base">✅ 相符</span>
                                 </div>
@@ -224,7 +225,7 @@
             function start(e) { e.preventDefault(); canvas.painting = true; draw(e); }
             function draw(e) {
                 if(!canvas.painting) return; e.preventDefault();
-                canvas.isModified = true;
+                canvas.isModified = true; 
                 const rect = canvas.getBoundingClientRect();
                 const x = (e.clientX || e.touches[0].clientX) - rect.left;
                 const y = (e.clientY || e.touches[0].clientY) - rect.top;
@@ -238,15 +239,15 @@
         setupCanvas(clientCanvas, clientCtx);
         setupCanvas(driverCanvas, driverCtx);
 
-        function clearCanvas(ctx, canvas) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            canvas.isModified = true;
+        function clearCanvas(ctx, canvas) { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            canvas.isModified = true; 
         }
 
         function openSignModal(deptName) {
             activeDeptKey = deptName;
             document.getElementById('modalDeptTitle').innerText = deptName;
-
+            
             let existClient = groupedData[deptName].clientSig;
             let existDriver = groupedData[deptName].driverSig;
 
@@ -254,7 +255,7 @@
             requestAnimationFrame(() => {
                 [clientCanvas, driverCanvas].forEach(c => { c.width = c.offsetWidth; c.height = 160; c.isModified = false; });
                 [clientCtx, driverCtx].forEach(ctx => { ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, 500, 200); });
-
+                
                 if(existClient) { let img = new Image(); img.onload = ()=> clientCtx.drawImage(img,0,0); img.src = existClient; }
                 if(existDriver) { let img = new Image(); img.onload = ()=> driverCtx.drawImage(img,0,0); img.src = existDriver; }
             });
@@ -267,7 +268,7 @@
 
             let existClient = groupedData[activeDeptKey].clientSig;
             let existDriver = groupedData[activeDeptKey].driverSig;
-
+            
             let cBase64 = cBlank ? "" : clientCanvas.toDataURL();
             let dBase64 = dBlank ? "" : driverCanvas.toDataURL();
 
@@ -286,19 +287,19 @@
                 driverSigBase64: dBase64
             };
 
-            fetch(API_URL, {
+            fetch(API_URL, { 
                 method: 'POST', mode: 'no-cors',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload) 
             })
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
-
+                
                 if (cBase64) groupedData[activeDeptKey].clientSig = cBase64;
                 if (dBase64) groupedData[activeDeptKey].driverSig = dBase64;
 
                 closeSignModal();
-                fetchData();
+                fetchData(); 
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
             })
