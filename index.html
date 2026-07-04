@@ -10,8 +10,6 @@
         .main-container { max-width: 500px; margin: 0 auto; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
         #signCanvas { display: block; width: 100%; height: 220px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
-        
-        /* 專屬計算機鍵盤的滑動動畫 */
         #calcModal { transition: transform 0.3s ease-in-out; }
         .calc-btn { user-select: none; transition: background 0.1s; }
         .calc-btn:active { background-color: #d1d5db; transform: scale(0.95); }
@@ -19,16 +17,15 @@
 </head>
 <body class="p-3 pb-32 relative overflow-x-hidden">
     
-    <!-- 輕提示 (Toast) -->
     <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold">
-        ✅ 動作已完成！
+        ✅ 數量已自動儲存！
     </div>
 
-    <!-- 專屬溫馨提示框 (取代原生的 alert) -->
+    <!-- 專屬溫馨提示框 -->
     <div id="msgModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[20000]">
         <div class="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
             <div id="msgIcon" class="text-6xl mb-4">⚠️</div>
-            <h3 id="msgText" class="text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-line">請先簽名</h3>
+            <h3 id="msgText" class="text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-line">提示訊息</h3>
             <button onclick="closeMsg()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-xl shadow-md active:bg-blue-700">我知道了</button>
         </div>
     </div>
@@ -38,22 +35,18 @@
         <!-- ==================== 【首頁：飯店選擇入口】 ==================== -->
         <div id="homeView">
             <div class="flex justify-between items-center mb-6 mt-2 px-1">
-                <h1 class="text-3xl font-black text-gray-800">首頁：選擇飯店</h1>
+                <h1 class="text-3xl font-black text-gray-800">選擇飯店</h1>
                 <button onclick="init()" class="bg-blue-100 text-blue-800 px-4 py-2 rounded-xl font-bold text-base shadow-sm active:bg-blue-200">
                     🔄 雲端同步
                 </button>
             </div>
             
             <div class="bg-white p-5 rounded-2xl shadow-sm mb-6 flex flex-col gap-4 border border-gray-200">
-                <div class="text-gray-500 font-bold text-lg mb-1">🔍 快速尋找您要盤點的飯店：</div>
-                
-                <!-- 大字體搜尋框 -->
                 <div class="relative w-full h-16">
                     <span class="absolute left-4 top-4 text-gray-400 text-2xl">🔍</span>
                     <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-xl font-bold pl-12 pr-4 outline-none" placeholder="輸入關鍵字..." oninput="renderHome()">
                 </div>
 
-                <!-- 大字體下拉選單 -->
                 <div class="relative w-full bg-blue-50 border-2 border-blue-200 rounded-xl h-16 flex items-center justify-center overflow-hidden">
                     <div id="homeSelectDisplay" class="w-full text-center font-black text-xl pointer-events-none text-blue-800">-- 點此展開清單 --</div>
                     <select id="homeSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="goToHotel(this.value)">
@@ -62,15 +55,13 @@
                 </div>
             </div>
 
-            <!-- 大型飯店按鈕網格 -->
             <div id="hotelGrid" class="grid grid-cols-2 gap-4 pb-10">
                 <div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl">資料同步中...</div>
             </div>
         </div>
 
-        <!-- ==================== 【內頁：飯店盤點與新增品項】 ==================== -->
+        <!-- ==================== 【內頁：飯店盤點與雙層複點】 ==================== -->
         <div id="hotelView" class="hidden">
-            <!-- 頂部導航列：回首頁與標題 -->
             <div class="flex items-center gap-3 mb-6 mt-2">
                 <button onclick="goHome()" class="bg-gray-800 text-white px-4 py-3 rounded-xl font-black text-lg shadow-md active:bg-gray-700 flex-shrink-0">
                     ⬅️ 回首頁
@@ -80,7 +71,6 @@
                 </h1>
             </div>
 
-            <!-- 日期選擇 (保留在內頁) -->
             <div class="bg-white p-2 rounded-xl shadow-sm mb-5 border border-gray-200">
                 <div class="relative w-full bg-gray-50 rounded-lg h-14 flex items-center justify-center">
                     <span class="absolute left-4 text-xl">📅</span>
@@ -89,10 +79,9 @@
                 </div>
             </div>
 
-            <!-- 盤點項目列表 -->
             <div id="itemsList" class="space-y-4"></div>
 
-            <!-- 🌟 新增臨時品項區塊 -->
+            <!-- 🌟 尋回的：新增臨時品項區塊 -->
             <div class="mt-8 bg-blue-50 p-5 rounded-2xl shadow-sm border-2 border-dashed border-blue-300">
                 <h2 class="text-xl font-black mb-3 text-blue-800">➕ 找不到品項？自己新增</h2>
                 <div class="flex gap-2">
@@ -104,11 +93,11 @@
         </div>
     </div>
 
-    <!-- 簽名板 Modal (強制簽名) -->
+    <!-- 簽名板 Modal (支援阿姨與主管兩種身份) -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-3xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 id="signModalTitle" class="text-lg font-black text-blue-800">✍️ 簽名解鎖輸入框</h2>
+                <h2 id="signModalTitle" class="text-lg font-black text-blue-800">✍️ 簽名解鎖</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-3 py-2 rounded-lg bg-red-50 border border-red-200 shadow-sm active:bg-red-100">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
@@ -123,13 +112,10 @@
     <div id="calcModal" class="fixed inset-x-0 bottom-0 transform translate-y-full bg-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.2)] rounded-t-3xl z-[10001] max-w-md mx-auto">
         <div class="p-4">
             <div class="flex justify-between items-center mb-3">
-                <span id="calcTitle" class="font-bold text-gray-500 text-base">正在計算：床單</span>
+                <span id="calcTitle" class="font-bold text-gray-500 text-base">正在計算：</span>
                 <button onclick="closeCalc()" class="text-red-600 font-bold px-4 py-2 bg-red-100 rounded-lg active:bg-red-200">關閉</button>
             </div>
-            <!-- 算式顯示區 -->
-            <div id="calcDisplay" class="w-full bg-white border-2 border-blue-400 rounded-xl h-16 mb-4 flex items-center justify-end px-4 text-4xl font-black text-gray-800 tracking-wider overflow-hidden">
-                0
-            </div>
+            <div id="calcDisplay" class="w-full bg-white border-2 border-blue-400 rounded-xl h-16 mb-4 flex items-center justify-end px-4 text-4xl font-black text-gray-800 tracking-wider overflow-hidden">0</div>
             <!-- 鍵盤按鈕區 -->
             <div class="grid grid-cols-4 gap-2 h-64">
                 <button onclick="calcPress('7')" class="calc-btn bg-white rounded-xl text-3xl font-bold shadow-sm border border-gray-200">7</button>
@@ -160,24 +146,22 @@
         let masterData = []; 
         let userInputs = {}; 
         let allCategories = []; 
-        let currentHotelName = ""; // 當前進入的飯店
+        let currentHotelName = ""; 
         let activeCategory = ""; 
         let activeItem = "";
+        let activeRole = ""; // 'aunt' 或 'sup' (主管)
         
         const canvas = document.getElementById('signCanvas');
         const ctx = canvas.getContext('2d');
         let painting = false;
         let calcExpr = "";
 
-        // 客製化彈窗 (取代 Alert)
         function showMessage(text, isError = true) {
             document.getElementById('msgText').innerText = text;
             document.getElementById('msgIcon').innerText = isError ? "⚠️" : "💡";
             document.getElementById('msgModal').classList.remove('hidden');
         }
-        function closeMsg() {
-            document.getElementById('msgModal').classList.add('hidden');
-        }
+        function closeMsg() { document.getElementById('msgModal').classList.add('hidden'); }
         function showToast(text) {
             const toast = document.getElementById('toast');
             toast.innerText = text;
@@ -192,8 +176,6 @@
         async function init() {
             document.getElementById('datePicker').value = getLocalDateString(new Date());
             updateDateDisplay();
-            
-            // 回到首頁並顯示載入中
             goHome();
             document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
             
@@ -202,34 +184,36 @@
                 const data = await res.json();
                 
                 masterData = data.template || [];
-                if (masterData.length === 0) throw new Error("後台無資料");
+                if (masterData.length === 0) throw new Error("無資料");
                 
                 if (data.records) {
                     data.records.forEach(r => {
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
-                        let isSub = r.count && String(r.count).trim() !== "" ? true : false;
-                        let hasSig = false; // 初始強制未解鎖狀態
-
                         userInputs[r.date][r.hotel][r.item] = { 
-                            count: r.count, note: r.note, hasSigned: hasSig, isSubmitted: isSub, signature: r.signature || "" 
+                            count: r.count, 
+                            note: r.note, 
+                            hasSigned: false, 
+                            isSubmitted: true, 
+                            signature: r.signature || "",
+                            doubleCount: r.doubleCount || "",
+                            doubleSignature: r.doubleSignature || "",
+                            doubleHasSigned: false
                         };
                     });
                 }
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
-                renderHome(); // 繪製首頁大按鈕
+                renderHome(); 
             } catch (error) {
-                document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-red-500 text-center mt-6 font-bold text-2xl">❌ 網路連線失敗，請重試</div>`;
+                document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-red-500 text-center mt-6 font-bold text-2xl">❌ 連線失敗，請重試</div>`;
             }
         }
 
-        // ================= 【首頁邏輯】 =================
         function renderHome() {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allCategories.filter(c => c.toLowerCase().includes(keyword));
             
-            // 處理下拉選單
             const select = document.getElementById('homeSelect');
             if (filtered.length > 0) {
                 select.innerHTML = '<option value="">-- 點擊選擇飯店 --</option>' + filtered.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -239,32 +223,25 @@
                 document.getElementById('homeSelectDisplay').innerText = "找不到相關飯店";
             }
 
-            // 處理大按鈕網格
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
                 grid.innerHTML = filtered.map(c => `
                     <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-3xl p-6 shadow-md active:bg-blue-100 transition-colors flex flex-col items-center justify-center gap-2">
-                        <span class="text-4xl">🏨</span>
                         <span class="text-xl font-black text-gray-800 break-words w-full">${c}</span>
                     </button>
                 `).join('');
             } else {
-                grid.innerHTML = `<div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl">找不到飯店「${keyword}」</div>`;
+                grid.innerHTML = `<div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl">找不到飯店</div>`;
             }
         }
 
         function goToHotel(hotelName) {
             if (!hotelName) return;
             currentHotelName = hotelName;
-            
-            // 切換畫面
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('hotelView').classList.remove('hidden');
-            
-            // 更新標題並清空選單防止殘留
             document.getElementById('currentHotelTitle').innerText = hotelName;
             document.getElementById('homeSelect').value = ""; 
-            
             renderItems();
         }
 
@@ -275,7 +252,6 @@
             renderHome();
         }
 
-        // ================= 【內頁邏輯】 =================
         function dateChanged() { updateDateDisplay(); if(currentHotelName) renderItems(); }
         function updateDateDisplay() {
             const d = new Date(document.getElementById('datePicker').value);
@@ -285,49 +261,42 @@
         function handleInput(date, category, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][category]) userInputs[date][category] = {};
-            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, isSubmitted: false, signature: '' };
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, isSubmitted: false, signature: '', doubleCount: '', doubleSignature: '', doubleHasSigned: false };
             userInputs[date][category][item][field] = value;
         }
 
-        // 🌟 新增臨時品項功能
         function addNewItem() {
             const inputEl = document.getElementById('newItemInput');
             const newItemName = inputEl.value.trim();
+            if (!newItemName) return showMessage("請輸入要新增的品項名稱喔！");
             
-            if (!newItemName) {
-                showMessage("請輸入要新增的品項名稱喔！");
-                return;
-            }
-
-            // 檢查是否已存在
             const exists = masterData.some(d => d.hotel === currentHotelName && d.item === newItemName);
-            if (exists) {
-                showMessage("這個品項已經在列表裡面囉！");
-                return;
-            }
-
-            // 加到主資料庫中
+            if (exists) return showMessage("這個品項已經在列表裡面囉！");
+            
             masterData.push({ hotel: currentHotelName, item: newItemName });
-            inputEl.value = ""; // 清空輸入框
-            
+            inputEl.value = ""; 
             showToast("✅ 已為您新增品項！");
-            renderItems(); // 重新繪製列表
-            
-            // 自動滑動到最底部的列表 (新增的通常在最後面)
-            setTimeout(() => {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            }, 100);
+            renderItems(); 
+            setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
         }
 
-        function handleItemClick(item) {
+        function handleItemClick(item, role) {
             const dateStr = document.getElementById('datePicker').value;
-            const hasSigned = userInputs[dateStr]?.[currentHotelName]?.[item]?.hasSigned;
+            const d = userInputs[dateStr]?.[currentHotelName]?.[item];
             
-            if (!hasSigned) {
-                openSign(currentHotelName, item);
-                return; 
+            if (role === 'aunt') {
+                // 如果主管已簽名，阿姨完全鎖死
+                if (d && d.doubleSignature) {
+                    return showMessage("🔒 複點主管已簽名！\n阿姨的數字已被完全鎖定，無法修改囉！");
+                }
+                const hasSigned = d?.hasSigned;
+                if (!hasSigned) return openSign(currentHotelName, item, 'aunt');
+                openCalc(currentHotelName, item, 'aunt');
+            } else if (role === 'sup') {
+                const doubleHasSigned = d?.doubleHasSigned;
+                if (!doubleHasSigned) return openSign(currentHotelName, item, 'sup');
+                openCalc(currentHotelName, item, 'sup');
             }
-            openCalc(currentHotelName, item);
         }
 
         function renderItems() {
@@ -336,59 +305,82 @@
 
             const filteredData = masterData.filter(d => d.hotel === currentHotelName);
             document.getElementById('itemsList').innerHTML = filteredData.map(d => {
-                const count = userInputs[dateStr]?.[d.hotel]?.[d.item]?.count || '';
-                const note = userInputs[dateStr]?.[d.hotel]?.[d.item]?.note || '';
-                const hasSigned = userInputs[dateStr]?.[d.hotel]?.[d.item]?.hasSigned || false;
-                const isSubmitted = userInputs[dateStr]?.[d.hotel]?.[d.item]?.isSubmitted || false;
+                const u = userInputs[dateStr]?.[d.hotel]?.[d.item] || {};
+                const count = u.count || '';
+                const doubleCount = u.doubleCount || '';
+                const hasSigned = u.hasSigned || false;
+                const doubleHasSigned = u.doubleHasSigned || false;
+                const isSubmitted = u.isSubmitted || false;
+                const supSignedEver = u.doubleSignature ? true : false; // 主管是否曾經簽過名 (用來徹底鎖死阿姨)
                 
-                let actionButton = "";
-                let numDisplayClass = hasSigned ? "bg-white text-blue-700 border-blue-500 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
-                let numText = count !== "" ? count : (hasSigned ? "點此輸入" : "第一步簽名");
+                // 阿姨區塊渲染
+                let auntDisplayClass = hasSigned ? "bg-white text-gray-800 border-blue-300 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
+                let auntText = count !== "" ? count : (hasSigned ? "輸入數量" : "🔒");
+                let auntActionButton = "";
 
-                if (isSubmitted && !hasSigned) {
-                    actionButton = `<div class="w-full py-3 bg-green-50 text-green-700 rounded-xl font-bold text-lg text-center border border-green-200 shadow-sm">✅ 已存檔 (修改請點上方重簽)</div>`;
+                if (supSignedEver) {
+                    // 主管已簽名，徹底鎖死
+                    auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300">🔒 已被主管鎖定</div>`;
+                    auntDisplayClass = "bg-gray-200 text-gray-500 border-gray-300";
+                } else if (isSubmitted && !hasSigned) {
+                    auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm text-center border border-gray-300 shadow-sm active:bg-gray-200">✅ 存檔(點此重簽)</button>`;
                 } else if (hasSigned) {
-                    actionButton = `<div class="w-full py-3 bg-orange-50 text-orange-600 rounded-xl font-bold text-lg text-center border border-orange-200 animate-pulse">👆 請點擊上方數量框輸入數字</div>`;
+                    auntActionButton = `<div class="w-full py-2 bg-blue-100 text-blue-700 rounded-lg font-bold text-sm text-center border border-blue-200 animate-pulse">👆 請輸入數量</div>`;
                 } else {
-                    actionButton = `<button onclick="openSign('${d.hotel}', '${d.item}')" class="w-full py-4 bg-blue-600 text-white rounded-xl font-black shadow-md text-xl active:bg-blue-700">✍️ 點此簽名解鎖輸入</button>`;
+                    auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-blue-700">第一步-簽名</button>`;
+                }
+
+                // 主管複點區塊渲染
+                let supDisplayClass = doubleHasSigned ? "bg-white text-blue-800 border-green-500 shadow-inner" : "bg-white text-blue-400 border-blue-200";
+                let supText = doubleCount !== "" ? doubleCount : (doubleHasSigned ? "輸入數量" : "等待輸入");
+                let supActionButton = "";
+
+                if (isSubmitted && !doubleHasSigned && u.doubleSignature) {
+                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-sm text-center border border-green-200 shadow-sm active:bg-green-100">✅ 複點完成(點此重簽)</button>`;
+                } else if (doubleHasSigned) {
+                    supActionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-sm text-center border border-orange-200 animate-pulse">👆 請輸入數量</div>`;
+                } else {
+                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-green-700">第二步-複點簽名</button>`;
                 }
 
                 return `
-                <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-200 relative overflow-hidden">
-                    ${!hasSigned ? '<div class="absolute inset-0 bg-gray-50/50 pointer-events-none z-10"></div>' : ''}
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden">
+                    <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${d.item}</div>
                     
-                    <div class="flex justify-between items-center mb-4 relative z-20">
-                        <span class="font-black text-3xl text-gray-800">${d.item}</span>
-                        <div onclick="handleItemClick('${d.item}')" class="px-5 py-3 text-right font-black text-3xl border-b-4 rounded-t-lg cursor-pointer min-w-[100px] ${numDisplayClass}">
-                            ${numText}
+                    <div class="flex gap-2 mb-4 relative z-20">
+                        <!-- 阿姨區塊 -->
+                        <div class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
+                            <div class="text-xs font-bold text-gray-500 mb-2 text-center">👩‍🦱 阿姨盤點</div>
+                            <div onclick="handleItemClick('${d.item}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">
+                                ${auntText}
+                            </div>
+                            ${auntActionButton}
+                        </div>
+                        
+                        <!-- 複點區塊 -->
+                        <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
+                            <div class="text-xs font-bold text-blue-700 mb-2 text-center">👔 主管複點</div>
+                            <div onclick="handleItemClick('${d.item}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">
+                                ${supText}
+                            </div>
+                            ${supActionButton}
                         </div>
                     </div>
                     
                     <input type="text" 
                         oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)"
-                        onchange="if(${hasSigned}) submitItemToServer('${d.hotel}', '${d.item}')"
-                        value="${note}" 
-                        ${!hasSigned ? 'disabled' : ''}
-                        class="w-full p-4 mb-5 border border-gray-300 rounded-xl text-lg font-bold outline-none focus:border-blue-500 bg-gray-50 relative z-20" 
-                        placeholder="${hasSigned ? "有短少或破損？寫完點旁邊自動存" : "🔒 解鎖後可寫備註"}">
-                    
-                    <div class="relative z-20">
-                        ${actionButton}
-                    </div>
+                        onchange="submitItemToServer('${d.hotel}', '${d.item}')"
+                        value="${u.note || ''}" 
+                        class="w-full p-3 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20 focus:border-blue-500" 
+                        placeholder="📝 點此可寫備註(寫完自動存)">
                 </div>`;
             }).join('');
         }
 
-        // ================= 【簽名板與計算機邏輯】 =================
         function setupCanvas() {
-            canvas.isModified = false;
-            canvas.isLocked = false; 
-
+            canvas.isModified = false; canvas.isLocked = false; 
             function start(e) { 
-                if (canvas.isLocked) {
-                    showMessage("🔒 必須重新簽名才能修改數量喔！\n👉 請先點擊右上角的【清除重寫】按鈕。");
-                    return;
-                }
+                if (canvas.isLocked) return showMessage("🔒 必須重新簽名才能修改數量！\n👉 請先點擊右上角的【清除重寫】按鈕。");
                 painting = true; draw(e); 
             }
             function draw(e) {
@@ -400,7 +392,6 @@
                 ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
             }
             function stop() { painting = false; ctx.beginPath(); }
-            
             canvas.addEventListener('mousedown', start); canvas.addEventListener('touchstart', start, {passive: false});
             canvas.addEventListener('mousemove', draw); canvas.addEventListener('touchmove', draw, {passive: false});
             canvas.addEventListener('mouseup', stop); canvas.addEventListener('touchend', stop);
@@ -409,128 +400,116 @@
 
         function clearCanvas() { 
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
-            canvas.isModified = true; 
-            canvas.isLocked = false; 
+            canvas.isModified = true; canvas.isLocked = false; 
             const titleEl = document.getElementById('signModalTitle');
-            titleEl.innerText = "✍️ 請簽上新名字";
+            titleEl.innerText = activeRole === 'aunt' ? "✍️ 請阿姨簽上新名字" : "✍️ 請主管簽上新名字";
             titleEl.className = "text-lg font-black text-blue-800";
         }
 
         function closeSign() { document.getElementById('signModal').classList.add('hidden'); }
         
-        function openSign(category, item) { 
-            activeCategory = category; activeItem = item; 
+        function openSign(category, item, role) { 
+            activeCategory = category; activeItem = item; activeRole = role;
             document.getElementById('signModal').classList.remove('hidden'); 
 
             const dateStr = document.getElementById('datePicker').value;
-            const existingSig = userInputs[dateStr]?.[category]?.[item]?.signature;
-            const isSubmitted = userInputs[dateStr]?.[category]?.[item]?.isSubmitted;
+            const d = userInputs[dateStr]?.[category]?.[item];
+            const existingSig = role === 'aunt' ? d?.signature : d?.doubleSignature;
+            const isSubmitted = d?.isSubmitted;
 
             requestAnimationFrame(() => {
-                canvas.width = canvas.offsetWidth; canvas.height = 220;
-                canvas.isModified = false; 
-                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; 
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvas.width = canvas.offsetWidth; canvas.height = 220; canvas.isModified = false; 
+                ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 canvas.isLocked = (isSubmitted && existingSig) ? true : false;
                 const titleEl = document.getElementById('signModalTitle');
+                
                 if (canvas.isLocked) {
                     titleEl.innerText = "🔒 請先按【清除重寫】才能修改";
                     titleEl.className = "text-lg font-black text-red-600 animate-pulse";
                 } else {
-                    titleEl.innerText = "✍️ 簽名解鎖輸入框";
+                    titleEl.innerText = role === 'aunt' ? "👩‍🦱 第一步：阿姨簽名解鎖" : "👔 第二步：主管複點簽名";
                     titleEl.className = "text-lg font-black text-blue-800";
                 }
 
                 if (existingSig) {
-                    let img = new Image();
-                    img.onload = () => ctx.drawImage(img, 0, 0);
-                    img.src = existingSig;
+                    let img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0); img.src = existingSig;
                 }
             });
         }
 
         function confirmSignature() {
-            if (canvas.isLocked) {
-                return showMessage("🔒 您尚未重新簽名！\n👉 請先點擊右上角的【清除重寫】並簽名，才能解鎖修改。");
-            }
+            if (canvas.isLocked) return showMessage("🔒 您尚未重新簽名！\n👉 請先點擊右上角的【清除重寫】並簽上新名字。");
+            
             let isBlank = !ctx.getImageData(0,0,canvas.width,canvas.height).data.some(c => c !== 0);
-            if (isBlank) {
-                return showMessage("請先在空白處簽名，才能解鎖輸入框喔！");
-            }
+            if (isBlank) return showMessage("請先在空白處簽名喔！");
 
             let sigBase64 = canvas.toDataURL();
             const dateStr = document.getElementById('datePicker').value;
-            handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
-            handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); 
-            handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); 
             
-            closeSign();
-            renderItems(); 
-            openCalc(activeCategory, activeItem); 
+            if (activeRole === 'aunt') {
+                handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
+                handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); 
+            } else {
+                handleInput(dateStr, activeCategory, activeItem, 'doubleSignature', sigBase64);
+                handleInput(dateStr, activeCategory, activeItem, 'doubleHasSigned', true); 
+            }
+            
+            handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); 
+            closeSign(); renderItems(); openCalc(activeCategory, activeItem, activeRole); 
         }
 
-        function openCalc(hotel, item) {
-            activeCategory = hotel; activeItem = item;
+        function openCalc(hotel, item, role) {
+            activeCategory = hotel; activeItem = item; activeRole = role;
             const dateStr = document.getElementById('datePicker').value;
-            document.getElementById('calcTitle').innerText = `正在計算：${item}`;
+            const roleName = role === 'aunt' ? '阿姨' : '主管';
+            document.getElementById('calcTitle').innerText = `${roleName}正在計算：${item}`;
             
-            calcExpr = String(userInputs[dateStr]?.[hotel]?.[item]?.count || "");
+            const d = userInputs[dateStr]?.[hotel]?.[item];
+            calcExpr = String(role === 'aunt' ? (d?.count || "") : (d?.doubleCount || ""));
             if(calcExpr === "0") calcExpr = "";
             document.getElementById('calcDisplay').innerText = calcExpr || "0";
-            
             document.getElementById('calcModal').classList.remove('translate-y-full');
         }
 
-        function closeCalc() {
-            document.getElementById('calcModal').classList.add('translate-y-full');
-        }
-
-        function calcPress(val) {
-            calcExpr += val;
-            document.getElementById('calcDisplay').innerText = calcExpr;
-        }
-
-        function calcBackspace() {
-            calcExpr = calcExpr.slice(0, -1);
-            document.getElementById('calcDisplay').innerText = calcExpr || "0";
-        }
-
-        function calcClear() {
-            calcExpr = "";
-            document.getElementById('calcDisplay').innerText = "0";
-        }
+        function closeCalc() { document.getElementById('calcModal').classList.add('translate-y-full'); }
+        function calcPress(val) { calcExpr += val; document.getElementById('calcDisplay').innerText = calcExpr; }
+        function calcBackspace() { calcExpr = calcExpr.slice(0, -1); document.getElementById('calcDisplay').innerText = calcExpr || "0"; }
+        function calcClear() { calcExpr = ""; document.getElementById('calcDisplay').innerText = "0"; }
 
         function calcConfirm() {
             let finalValue = 0;
-            try {
-                if (/^[0-9\+\-]+$/.test(calcExpr)) {
-                    finalValue = eval(calcExpr); 
-                } else {
-                    finalValue = parseInt(calcExpr) || 0;
-                }
-            } catch (e) { finalValue = 0; }
+            try { finalValue = /^[0-9\+\-]+$/.test(calcExpr) ? eval(calcExpr) : (parseInt(calcExpr) || 0); } catch (e) { finalValue = 0; }
 
             const dateStr = document.getElementById('datePicker').value;
-            handleInput(dateStr, activeCategory, activeItem, 'count', finalValue);
             
-            closeCalc();
-            renderItems(); 
-            submitItemToServer(activeCategory, activeItem);
+            if (activeRole === 'aunt') {
+                handleInput(dateStr, activeCategory, activeItem, 'count', finalValue);
+                // ★ 連動機制：如果主管還沒簽過名，阿姨打的數字就自動複製過去
+                const d = userInputs[dateStr]?.[activeCategory]?.[activeItem];
+                if (!d?.doubleSignature) {
+                    handleInput(dateStr, activeCategory, activeItem, 'doubleCount', finalValue);
+                }
+            } else {
+                handleInput(dateStr, activeCategory, activeItem, 'doubleCount', finalValue);
+            }
+            
+            closeCalc(); renderItems(); submitItemToServer(activeCategory, activeItem);
         }
 
         function submitItemToServer(category, item) {
             const dateStr = document.getElementById('datePicker').value;
-            const countVal = userInputs[dateStr]?.[category]?.[item]?.count || 0;
-            const noteVal = userInputs[dateStr]?.[category]?.[item]?.note || '';
-            const sigBase64 = userInputs[dateStr]?.[category]?.[item]?.signature || '';
-            
-            if(!countVal || countVal === "0" || String(countVal).trim() === "") return; 
-            if(!sigBase64) return; 
+            const d = userInputs[dateStr]?.[category]?.[item];
+            if (!d) return;
+
+            // 必須要有任何一方的簽名才能存檔
+            if(!d.signature && !d.doubleSignature) return; 
 
             const payload = { 
                 type: 'inventory', date: dateStr, hotel: category, item: item, 
-                count: countVal, note: noteVal, signature: sigBase64, timestamp: new Date().toLocaleString() 
+                count: d.count || '', note: d.note || '', signature: d.signature || '', 
+                doubleCount: d.doubleCount || '', doubleSignature: d.doubleSignature || '',
+                timestamp: new Date().toLocaleString() 
             };
             
             fetch(API_URL, { 
@@ -541,11 +520,13 @@
             .then(() => {
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
                 handleInput(dateStr, category, item, 'hasSigned', false); 
+                handleInput(dateStr, category, item, 'doubleHasSigned', false); 
                 renderItems();
                 showToast("✅ 數量已自動儲存！");
             }).catch(e => {
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
                 handleInput(dateStr, category, item, 'hasSigned', false); 
+                handleInput(dateStr, category, item, 'doubleHasSigned', false); 
                 renderItems();
             });
         }
