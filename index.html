@@ -311,16 +311,16 @@
                 const hasSigned = u.hasSigned || false;
                 const doubleHasSigned = u.doubleHasSigned || false;
                 const isSubmitted = u.isSubmitted || false;
-                const supSignedEver = u.doubleSignature ? true : false; // 主管是否曾經簽過名 (用來徹底鎖死阿姨)
+                const supSignedEver = u.doubleSignature ? true : false; // 主管是否曾經簽過名 (用來徹底鎖死第一線)
                 
-                // 阿姨區塊渲染
+                // 現場盤點區塊渲染
                 let auntDisplayClass = hasSigned ? "bg-white text-gray-800 border-blue-300 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
                 let auntText = count !== "" ? count : (hasSigned ? "輸入數量" : "🔒");
                 let auntActionButton = "";
 
                 if (supSignedEver) {
                     // 主管已簽名，徹底鎖死
-                    auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300">🔒 已被主管鎖定</div>`;
+                    auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300">🔒 已被複點鎖定</div>`;
                     auntDisplayClass = "bg-gray-200 text-gray-500 border-gray-300";
                 } else if (isSubmitted && !hasSigned) {
                     auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm text-center border border-gray-300 shadow-sm active:bg-gray-200">✅ 存檔(點此重簽)</button>`;
@@ -330,7 +330,7 @@
                     auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-blue-700">第一步-簽名</button>`;
                 }
 
-                // 主管複點區塊渲染
+                // 複點區塊渲染
                 let supDisplayClass = doubleHasSigned ? "bg-white text-blue-800 border-green-500 shadow-inner" : "bg-white text-blue-400 border-blue-200";
                 let supText = doubleCount !== "" ? doubleCount : (doubleHasSigned ? "輸入數量" : "等待輸入");
                 let supActionButton = "";
@@ -348,18 +348,18 @@
                     <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${d.item}</div>
                     
                     <div class="flex gap-2 mb-4 relative z-20">
-                        <!-- 阿姨區塊 -->
+                        <!-- 現場數量區塊 -->
                         <div class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
-                            <div class="text-xs font-bold text-gray-500 mb-2 text-center">👩‍🦱 阿姨盤點</div>
+                            <div class="text-sm font-bold text-gray-500 mb-2 text-center">現場數量</div>
                             <div onclick="handleItemClick('${d.item}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">
                                 ${auntText}
                             </div>
                             ${auntActionButton}
                         </div>
                         
-                        <!-- 複點區塊 -->
+                        <!-- 複點數量區塊 -->
                         <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
-                            <div class="text-xs font-bold text-blue-700 mb-2 text-center">👔 主管複點</div>
+                            <div class="text-sm font-bold text-blue-700 mb-2 text-center">複點數量</div>
                             <div onclick="handleItemClick('${d.item}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">
                                 ${supText}
                             </div>
@@ -402,7 +402,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
             canvas.isModified = true; canvas.isLocked = false; 
             const titleEl = document.getElementById('signModalTitle');
-            titleEl.innerText = activeRole === 'aunt' ? "✍️ 請阿姨簽上新名字" : "✍️ 請主管簽上新名字";
+            titleEl.innerText = activeRole === 'aunt' ? "✍️ 請現場人員簽上新名字" : "✍️ 請複點人員簽上新名字";
             titleEl.className = "text-lg font-black text-blue-800";
         }
 
@@ -428,7 +428,7 @@
                     titleEl.innerText = "🔒 請先按【清除重寫】才能修改";
                     titleEl.className = "text-lg font-black text-red-600 animate-pulse";
                 } else {
-                    titleEl.innerText = role === 'aunt' ? "👩‍🦱 第一步：阿姨簽名解鎖" : "👔 第二步：主管複點簽名";
+                    titleEl.innerText = role === 'aunt' ? "第一步：現場人員簽名解鎖" : "第二步：複點人員簽名";
                     titleEl.className = "text-lg font-black text-blue-800";
                 }
 
@@ -462,7 +462,7 @@
         function openCalc(hotel, item, role) {
             activeCategory = hotel; activeItem = item; activeRole = role;
             const dateStr = document.getElementById('datePicker').value;
-            const roleName = role === 'aunt' ? '阿姨' : '主管';
+            const roleName = role === 'aunt' ? '現場人員' : '複點人員';
             document.getElementById('calcTitle').innerText = `${roleName}正在計算：${item}`;
             
             const d = userInputs[dateStr]?.[hotel]?.[item];
