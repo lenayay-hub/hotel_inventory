@@ -286,7 +286,7 @@
             
             if (role === 'aunt') {
                 if (u.doubleSignature) {
-                    return showMessage("🔒 複點主管已簽名！\n現場數量已被完全鎖定，無法修改囉！");
+                    return showMessage("🔒 以復點完成！\n現場數量已被完全鎖定，無法修改囉！");
                 }
                 const hasSigned = u.hasSigned;
                 if (!hasSigned) return openSign(currentHotelName, item, 'aunt');
