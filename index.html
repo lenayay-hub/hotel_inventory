@@ -18,7 +18,7 @@
 <body class="p-3 pb-32 relative overflow-x-hidden">
     
     <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold">
-        ✅ 數量已自動儲存！
+        數量已自動儲存！
     </div>
 
     <!-- 專屬溫馨提示框 -->
@@ -81,7 +81,7 @@
 
             <div id="itemsList" class="space-y-4"></div>
 
-            <!-- 🌟 尋回的：新增臨時品項區塊 -->
+            <!-- 新增臨時品項區塊 -->
             <div class="mt-8 bg-blue-50 p-5 rounded-2xl shadow-sm border-2 border-dashed border-blue-300">
                 <h2 class="text-xl font-black mb-3 text-blue-800">➕ 找不到品項？自己新增</h2>
                 <div class="flex gap-2">
@@ -97,7 +97,7 @@
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-3xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
-                <h2 id="signModalTitle" class="text-lg font-black text-blue-800">✍️ 簽名解鎖</h2>
+                <h2 id="signModalTitle" class="text-lg font-black text-blue-800">簽名解鎖</h2>
                 <button onclick="clearCanvas()" class="text-sm text-red-500 font-bold px-3 py-2 rounded-lg bg-red-50 border border-red-200 shadow-sm active:bg-red-100">清除重寫</button>
             </div>
             <canvas id="signCanvas"></canvas>
@@ -149,7 +149,7 @@
         let currentHotelName = ""; 
         let activeCategory = ""; 
         let activeItem = "";
-        let activeRole = ""; // 'aunt' 或 'sup' (主管)
+        let activeRole = ""; 
         
         const canvas = document.getElementById('signCanvas');
         const ctx = canvas.getContext('2d');
@@ -282,18 +282,17 @@
 
         function handleItemClick(item, role) {
             const dateStr = document.getElementById('datePicker').value;
-            const d = userInputs[dateStr]?.[currentHotelName]?.[item];
+            const u = (userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][item]) || {};
             
             if (role === 'aunt') {
-                // 如果主管已簽名，阿姨完全鎖死
-                if (d && d.doubleSignature) {
-                    return showMessage("🔒 複點主管已簽名！\n阿姨的數字已被完全鎖定，無法修改囉！");
+                if (u.doubleSignature) {
+                    return showMessage("🔒 複點主管已簽名！\n現場數量已被完全鎖定，無法修改囉！");
                 }
-                const hasSigned = d?.hasSigned;
+                const hasSigned = u.hasSigned;
                 if (!hasSigned) return openSign(currentHotelName, item, 'aunt');
                 openCalc(currentHotelName, item, 'aunt');
             } else if (role === 'sup') {
-                const doubleHasSigned = d?.doubleHasSigned;
+                const doubleHasSigned = u.doubleHasSigned;
                 if (!doubleHasSigned) return openSign(currentHotelName, item, 'sup');
                 openCalc(currentHotelName, item, 'sup');
             }
@@ -304,22 +303,22 @@
             if (!currentHotelName) return;
 
             const filteredData = masterData.filter(d => d.hotel === currentHotelName);
-            document.getElementById('itemsList').innerHTML = filteredData.map(d => {
-                const u = userInputs[dateStr]?.[d.hotel]?.[d.item] || {};
+            let htmlContent = "";
+
+            filteredData.forEach(d => {
+                const u = (userInputs[dateStr] && userInputs[dateStr][d.hotel] && userInputs[dateStr][d.hotel][d.item]) || {};
                 const count = u.count || '';
                 const doubleCount = u.doubleCount || '';
                 const hasSigned = u.hasSigned || false;
                 const doubleHasSigned = u.doubleHasSigned || false;
                 const isSubmitted = u.isSubmitted || false;
-                const supSignedEver = u.doubleSignature ? true : false; // 主管是否曾經簽過名 (用來徹底鎖死第一線)
+                const supSignedEver = u.doubleSignature ? true : false;
                 
-                // 現場盤點區塊渲染
                 let auntDisplayClass = hasSigned ? "bg-white text-gray-800 border-blue-300 shadow-inner" : "bg-gray-100 text-gray-400 border-gray-300";
                 let auntText = count !== "" ? count : (hasSigned ? "輸入數量" : "🔒");
                 let auntActionButton = "";
 
                 if (supSignedEver) {
-                    // 主管已簽名，徹底鎖死
                     auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300">🔒 已被複點鎖定</div>`;
                     auntDisplayClass = "bg-gray-200 text-gray-500 border-gray-300";
                 } else if (isSubmitted && !hasSigned) {
@@ -330,25 +329,23 @@
                     auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-blue-700">第一步-簽名</button>`;
                 }
 
-                // 複點區塊渲染
                 let supDisplayClass = doubleHasSigned ? "bg-white text-blue-800 border-green-500 shadow-inner" : "bg-white text-blue-400 border-blue-200";
                 let supText = doubleCount !== "" ? doubleCount : (doubleHasSigned ? "輸入數量" : "等待輸入");
                 let supActionButton = "";
 
                 if (isSubmitted && !doubleHasSigned && u.doubleSignature) {
-                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-sm text-center border border-green-200 shadow-sm active:bg-green-100">✅ 複點完成(點此重簽)</button>`;
+                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-sm text-center border border-green-200 shadow-sm active:bg-green-100">✅ 複點完成(重簽)</button>`;
                 } else if (doubleHasSigned) {
                     supActionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-sm text-center border border-orange-200 animate-pulse">👆 請輸入數量</div>`;
                 } else {
                     supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-green-700">第二步-複點簽名</button>`;
                 }
 
-                return `
+                htmlContent += `
                 <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden">
                     <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${d.item}</div>
                     
                     <div class="flex gap-2 mb-4 relative z-20">
-                        <!-- 現場數量區塊 -->
                         <div class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
                             <div class="text-sm font-bold text-gray-500 mb-2 text-center">現場數量</div>
                             <div onclick="handleItemClick('${d.item}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">
@@ -357,7 +354,6 @@
                             ${auntActionButton}
                         </div>
                         
-                        <!-- 複點數量區塊 -->
                         <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
                             <div class="text-sm font-bold text-blue-700 mb-2 text-center">複點數量</div>
                             <div onclick="handleItemClick('${d.item}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">
@@ -374,7 +370,9 @@
                         class="w-full p-3 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20 focus:border-blue-500" 
                         placeholder="📝 點此可寫備註(寫完自動存)">
                 </div>`;
-            }).join('');
+            });
+
+            document.getElementById('itemsList').innerHTML = htmlContent;
         }
 
         function setupCanvas() {
@@ -402,7 +400,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
             canvas.isModified = true; canvas.isLocked = false; 
             const titleEl = document.getElementById('signModalTitle');
-            titleEl.innerText = activeRole === 'aunt' ? "✍️ 請現場人員簽上新名字" : "✍️ 請複點人員簽上新名字";
+            titleEl.innerText = activeRole === 'aunt' ? "請現場人員簽上新名字" : "請複點人員簽上新名字";
             titleEl.className = "text-lg font-black text-blue-800";
         }
 
@@ -413,12 +411,12 @@
             document.getElementById('signModal').classList.remove('hidden'); 
 
             const dateStr = document.getElementById('datePicker').value;
-            const d = userInputs[dateStr]?.[category]?.[item];
-            const existingSig = role === 'aunt' ? d?.signature : d?.doubleSignature;
-            const isSubmitted = d?.isSubmitted;
+            const u = (userInputs[dateStr] && userInputs[dateStr][category] && userInputs[dateStr][category][item]) || {};
+            const existingSig = role === 'aunt' ? u.signature : u.doubleSignature;
+            const isSubmitted = u.isSubmitted;
 
             requestAnimationFrame(() => {
-                canvas.width = canvas.offsetWidth; canvas.height = 220; canvas.isModified = false; 
+                canvas.width = canvas.offsetWidth || 300; canvas.height = 220; canvas.isModified = false; 
                 ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 canvas.isLocked = (isSubmitted && existingSig) ? true : false;
@@ -465,8 +463,8 @@
             const roleName = role === 'aunt' ? '現場人員' : '複點人員';
             document.getElementById('calcTitle').innerText = `${roleName}正在計算：${item}`;
             
-            const d = userInputs[dateStr]?.[hotel]?.[item];
-            calcExpr = String(role === 'aunt' ? (d?.count || "") : (d?.doubleCount || ""));
+            const u = (userInputs[dateStr] && userInputs[dateStr][hotel] && userInputs[dateStr][hotel][item]) || {};
+            calcExpr = String(role === 'aunt' ? (u.count || "") : (u.doubleCount || ""));
             if(calcExpr === "0") calcExpr = "";
             document.getElementById('calcDisplay').innerText = calcExpr || "0";
             document.getElementById('calcModal').classList.remove('translate-y-full');
@@ -479,15 +477,14 @@
 
         function calcConfirm() {
             let finalValue = 0;
-            try { finalValue = /^[0-9\+\-]+$/.test(calcExpr) ? eval(calcExpr) : (parseInt(calcExpr) || 0); } catch (e) { finalValue = 0; }
+            try { finalValue = /^[0-9\+\-]+$/.test(calcExpr) ? Function("return " + calcExpr)() : (parseInt(calcExpr) || 0); } catch (e) { finalValue = 0; }
 
             const dateStr = document.getElementById('datePicker').value;
             
             if (activeRole === 'aunt') {
                 handleInput(dateStr, activeCategory, activeItem, 'count', finalValue);
-                // ★ 連動機制：如果主管還沒簽過名，阿姨打的數字就自動複製過去
-                const d = userInputs[dateStr]?.[activeCategory]?.[activeItem];
-                if (!d?.doubleSignature) {
+                const u = (userInputs[dateStr] && userInputs[dateStr][activeCategory] && userInputs[dateStr][activeCategory][activeItem]) || {};
+                if (!u.doubleSignature) {
                     handleInput(dateStr, activeCategory, activeItem, 'doubleCount', finalValue);
                 }
             } else {
@@ -499,16 +496,15 @@
 
         function submitItemToServer(category, item) {
             const dateStr = document.getElementById('datePicker').value;
-            const d = userInputs[dateStr]?.[category]?.[item];
-            if (!d) return;
+            const u = (userInputs[dateStr] && userInputs[dateStr][category] && userInputs[dateStr][category][item]) || null;
+            if (!u) return;
 
-            // 必須要有任何一方的簽名才能存檔
-            if(!d.signature && !d.doubleSignature) return; 
+            if(!u.signature && !u.doubleSignature) return; 
 
             const payload = { 
                 type: 'inventory', date: dateStr, hotel: category, item: item, 
-                count: d.count || '', note: d.note || '', signature: d.signature || '', 
-                doubleCount: d.doubleCount || '', doubleSignature: d.doubleSignature || '',
+                count: u.count || '', note: u.note || '', signature: u.signature || '', 
+                doubleCount: u.doubleCount || '', doubleSignature: u.doubleSignature || '',
                 timestamp: new Date().toLocaleString() 
             };
             
@@ -522,7 +518,7 @@
                 handleInput(dateStr, category, item, 'hasSigned', false); 
                 handleInput(dateStr, category, item, 'doubleHasSigned', false); 
                 renderItems();
-                showToast("✅ 數量已自動儲存！");
+                showToast("數量已自動儲存！");
             }).catch(e => {
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
                 handleInput(dateStr, category, item, 'hasSigned', false); 
