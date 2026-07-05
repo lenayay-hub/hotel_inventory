@@ -8,54 +8,66 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
         /* 最純粹的 Excel 表格風格 */
-        body { font-family: 'Arial', sans-serif; background-color: #fff; color: #000; padding: 20px; font-size: 14px; }
-        .filter-section { border: 1px solid #aaa; padding: 15px; margin-bottom: 20px; background-color: #f4f4f4; }
+        body { font-family: 'Arial', sans-serif; background-color: #f8fafc; color: #000; padding: 20px; font-size: 14px; }
+        .filter-section { border: 1px solid #aaa; padding: 15px; margin-bottom: 20px; background-color: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;}
         .filter-item { display: inline-block; margin-right: 20px; margin-bottom: 10px; }
-        .filter-item label { font-weight: bold; margin-right: 5px; }
-        .filter-item input { padding: 4px 8px; border: 1px solid #ccc; font-size: 14px; }
+        .filter-item label { font-weight: bold; margin-right: 5px; color: #333; }
+        .filter-item input { padding: 6px 10px; border: 1px solid #ccc; font-size: 14px; border-radius: 4px; }
         
-        button { padding: 8px 16px; border: 1px solid #555; background-color: #e0e0e0; cursor: pointer; font-weight: bold; margin-right: 10px; border-radius: 4px; }
+        button { padding: 8px 16px; border: 1px solid #555; background-color: #e0e0e0; cursor: pointer; font-weight: bold; margin-right: 10px; border-radius: 4px; transition: 0.2s;}
         button:hover { background-color: #ccc; }
         .btn-excel { background-color: #107c41; color: white; border-color: #0b5e31; }
         .btn-excel:hover { background-color: #0c6132; }
+        .btn-load { background-color: #2563eb; color: white; border-color: #1e40af; }
+        .btn-load:hover { background-color: #1d4ed8; }
         
-        .excel-table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; }
-        .excel-table th, .excel-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: middle; }
+        /* 區塊標題設計 */
+        .dept-title { font-size: 20px; font-weight: 900; margin-top: 40px; margin-bottom: 10px; color: #1e3a8a; border-bottom: 3px solid #1e3a8a; padding-bottom: 5px; }
+        .summary-title { font-size: 16px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; color: #0b5e31; display: flex; align-items: center; }
+        .summary-title::before { content: "📊"; margin-right: 8px; }
+
+        .excel-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #fff; }
+        .excel-table th, .excel-table td { border: 1px solid #000; padding: 8px 10px; text-align: left; vertical-align: middle; }
         .excel-table th { background-color: #e2efda; font-weight: bold; text-align: center; } 
+        .summary-table th { background-color: #fff2cc; } /* 彙整表的表頭換色以做區分 */
         
         /* 欄寬設定 */
-        .col-date { width: 90px; text-align: center; }
+        .col-date { width: 100px; text-align: center; }
         .col-dept { width: auto; white-space: nowrap; }
-        .col-item { width: 120px; }
-        .col-qty-readonly { width: 70px; text-align: right; color: #666; background-color: #f9f9f9; }
-        .col-qty-edit { width: 80px; text-align: right; }
-        .col-price { width: 60px; text-align: right; }
-        .col-amount { width: 90px; text-align: right; }
-        .col-note { width: 150px; }
+        .col-item { width: 150px; }
+        .col-qty-readonly { width: 80px; text-align: right; color: #666; background-color: #f9f9f9; }
+        .col-qty-edit { width: 90px; text-align: right; }
+        .col-price { width: 80px; text-align: right; }
+        .col-amount { width: 110px; text-align: right; font-weight: bold; }
+        .col-note { width: 180px; }
 
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
         
         /* 輸入框設計：讓財務清楚知道哪裡可以改 */
-        .edit-input { width: 100%; border: 2px solid #90caf9; padding: 4px; box-sizing: border-box; background-color: #e3f2fd; font-weight: bold; font-family: inherit; }
+        .edit-input { width: 100%; border: 2px solid #90caf9; padding: 6px; box-sizing: border-box; background-color: #e3f2fd; font-weight: bold; font-family: inherit; font-size: 15px;}
         .edit-input:focus { outline: none; border-color: #1976d2; background-color: #fff; }
         .qty-input { text-align: right; }
 
-        /* 匯總表專屬樣式 */
-        .summary-title { font-size: 18px; font-weight: bold; margin-top: 40px; margin-bottom: 10px; border-bottom: 2px solid #000; padding-bottom: 5px; }
-        .subtotal-row td { font-weight: bold; background-color: #fce4d6; }
-        .grand-total-row td { font-weight: bold; background-color: #ffffcc; font-size: 16px;} 
-        .tax-row td { font-weight: bold; background-color: #ddebf7; font-size: 16px; color: #c00000;}
+        /* 彙整表與總計專屬樣式 */
+        .subtotal-row td { font-weight: bold; background-color: #fce4d6; font-size: 15px;}
+        .grand-total-section { margin-top: 50px; border: 3px double #000; background-color: #fff; padding: 20px;}
+        .grand-total-row td { font-weight: 900; background-color: #ffffcc; font-size: 18px;} 
+        .tax-row td { font-weight: 900; background-color: #ddebf7; font-size: 18px; color: #c00000;}
 
-        .msg-box { padding: 20px; text-align: center; font-weight: bold; border: 1px solid #aaa; margin-top: 20px; }
+        .msg-box { padding: 20px; text-align: center; font-weight: bold; border: 1px solid #aaa; margin-top: 20px; background-color: #fff;}
 
         @media print {
             .no-print { display: none !important; }
-            body { padding: 0; }
+            body { padding: 0; background-color: #fff;}
+            .dept-title { margin-top: 30px; page-break-after: avoid; }
+            .excel-table { page-break-inside: avoid; }
             .excel-table th, .excel-table td { border: 1px solid #000 !important; }
             .excel-table th { background-color: #e2efda !important; -webkit-print-color-adjust: exact; }
+            .summary-table th { background-color: #fff2cc !important; -webkit-print-color-adjust: exact; }
             .subtotal-row td { background-color: #fce4d6 !important; -webkit-print-color-adjust: exact; }
+            .grand-total-section { border: 2px solid #000 !important; }
             .grand-total-row td { background-color: #ffffcc !important; -webkit-print-color-adjust: exact; }
             .tax-row td { background-color: #ddebf7 !important; -webkit-print-color-adjust: exact; }
             
@@ -69,7 +81,7 @@
 <body>
 
     <div class="no-print filter-section">
-        <h2 style="margin-top: 0;">百麒物流 財務結帳查詢</h2>
+        <h2 style="margin-top: 0; color: #1f2937;">百麒物流 💼 財務結帳查詢</h2>
         
         <div class="filter-item">
             <label>起始日期：</label>
@@ -85,24 +97,29 @@
         </div>
 
         <br>
-        <button onclick="fetchData()">載入報表</button>
+        <button class="btn-load" onclick="fetchData()">載入報表</button>
         <button class="btn-excel" onclick="exportToExcel()">📊 匯出 Excel</button>
         <button onclick="window.print()">🖨️ 列印 / 匯出 PDF</button>
     </div>
 
     <div id="printHeader" style="text-align: center; margin-bottom: 15px;">
-        <h2>飯店點交請款明細表</h2>
-        <p id="printInfo" style="margin: 0; font-weight: bold; color: #555;"></p>
+        <h2 style="font-size: 24px; margin-bottom: 5px;">百麒物流 - 飯店點交請款明細表</h2>
+        <p id="printInfo" style="margin: 0; font-weight: bold; color: #555; font-size: 16px;"></p>
     </div>
 
     <div id="resultsContainer">
-        <div class="msg-box no-print">請設定條件並點擊「載入報表」按鈕</div>
+        <div class="msg-box no-print text-gray-500">請設定條件並點擊「載入報表」按鈕</div>
     </div>
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
         let currentReportData = [];
+
+        // 金額格式化函數 (強制顯示小數點後兩位)
+        function formatMoney(num) {
+            return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
 
         window.onload = function() {
             const today = new Date();
@@ -125,10 +142,9 @@
             
             document.getElementById('printHeader').style.display = 'block';
             document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate} ${hotel ? ' | 篩選：' + hotel : ''}`;
-            container.innerHTML = `<div class="msg-box no-print">⚙️ 資料讀取與計算中...</div>`;
+            container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 資料讀取與計算中... 請稍候</div>`;
             
             try {
-                // 將 startDate 和 endDate 傳給後端
                 const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${hotel}&t=${new Date().getTime()}`);
                 const data = await res.json();
                 
@@ -167,9 +183,9 @@
                         date: dateStr,
                         dept: deptStr,
                         item: itemName,
-                        originalQty: actualQty, // 當初司機點交的數量 (備查用)
-                        qty: actualQty,         // 財務要請款的數量 (可修改)
-                        price: unitPrice,
+                        originalQty: actualQty,
+                        qty: actualQty,         
+                        price: Number(unitPrice) || 0, // 確保單價是數字型態
                         note: item.auntNote || item.driverNote || ""
                     });
                 });
@@ -180,161 +196,150 @@
                 return;
             }
 
-            // 依日期與部門排序
-            currentReportData.sort((a, b) => a.date.localeCompare(b.date) || a.dept.localeCompare(b.dept));
+            // 先排序好，以利後續分部門渲染
+            currentReportData.sort((a, b) => a.dept.localeCompare(b.dept) || a.date.localeCompare(b.date) || a.item.localeCompare(b.item));
+            
+            // 給每個物件一個唯一的全域 Index，用來對應修改框
+            currentReportData.forEach((row, idx) => { row.globalIndex = idx; });
+
             renderReport();
         }
 
-        // 財務修改數量時觸發 (重新計算畫面)
-        function updateQty(index, val) {
-            currentReportData[index].qty = parseInt(val) || 0;
-            renderReport();
+        function updateQty(globalIndex, val) {
+            currentReportData[globalIndex].qty = parseInt(val) || 0;
+            renderReport(); // 重繪畫面重新計算
         }
 
-        // 財務修改備註時觸發 (不重新計算，避免輸入到一半失去焦點)
-        function updateNote(index, val) {
-            currentReportData[index].note = val;
+        function updateNote(globalIndex, val) {
+            currentReportData[globalIndex].note = val;
         }
 
         function renderReport() {
-            let html = `
-                <table class="excel-table">
-                    <thead>
-                        <tr>
-                            <th class="col-date">點交日期</th>
-                            <th class="col-dept">飯店 / 部門</th>
-                            <th class="col-item">品項名稱</th>
-                            <th class="col-qty-readonly" title="司機當初點交確認的數量">物流點交量</th>
-                            <th class="col-qty-edit" title="財務可修改此數量來調整請款">請款數量📝</th>
-                            <th class="col-price">單價</th>
-                            <th class="col-amount">金額</th>
-                            <th class="col-note">財務備註📝</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            currentReportData.forEach((row, index) => {
-                let subtotal = row.qty * row.price;
-                html += `
-                <tr>
-                    <td class="col-date">${row.date}</td>
-                    <td class="col-dept">${row.dept}</td>
-                    <td class="col-item">${row.item}</td>
-                    <td class="col-qty-readonly">${row.originalQty}</td>
-                    <td class="col-qty-edit">
-                        <input type="number" class="edit-input qty-input" value="${row.qty}" onchange="updateQty(${index}, this.value)">
-                    </td>
-                    <td class="col-price">${row.price}</td>
-                    <td class="col-amount">${subtotal.toLocaleString()}</td>
-                    <td class="col-note">
-                        <input type="text" class="edit-input" value="${row.note}" onchange="updateNote(${index}, this.value)" placeholder="可備註扣款原因">
-                    </td>
-                </tr>
-                `;
-            });
-            html += `</tbody></table>`;
-
-            // ==========================================
-            // 產生精細匯總表 (Pivot Table)
-            // ==========================================
-            html += `<div class="summary-title">📊 本區間各部門品項結算匯總表</div>`;
-            html += `
-                <table class="excel-table" style="width: 80%; margin-left: 0;">
-                    <thead>
-                        <tr>
-                            <th class="col-dept">飯店 / 部門</th>
-                            <th class="col-item">品項名稱</th>
-                            <th class="col-qty-edit">請款總數量</th>
-                            <th class="col-price">單價</th>
-                            <th class="col-amount">總金額 (未稅)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            let summaryMap = {};
-            currentReportData.forEach(row => {
-                let key = row.dept + "|||" + row.item;
-                if (!summaryMap[key]) {
-                    summaryMap[key] = { dept: row.dept, item: row.item, qty: 0, price: row.price, amount: 0 };
-                }
-                summaryMap[key].qty += row.qty;
-                summaryMap[key].amount += (row.qty * row.price);
-            });
-
-            let summaryArray = Object.values(summaryMap);
-            summaryArray.sort((a, b) => a.dept.localeCompare(b.dept) || a.item.localeCompare(b.item));
-
-            let currentDept = "";
-            let deptSubtotalQty = 0;
-            let deptSubtotalAmount = 0;
+            let html = "";
             let grandTotalAmount = 0;
 
-            summaryArray.forEach((row, index) => {
-                if (currentDept !== "" && currentDept !== row.dept) {
-                    html += `
-                    <tr class="subtotal-row">
-                        <td colspan="2" class="text-right">【${currentDept}】 小計：</td>
-                        <td class="text-right">${deptSubtotalQty}</td>
-                        <td></td>
-                        <td class="text-right">${deptSubtotalAmount.toLocaleString()}</td>
-                    </tr>
-                    `;
-                    deptSubtotalQty = 0;
-                    deptSubtotalAmount = 0;
-                }
+            // 1. 抓出所有不重複的「飯店/部門」
+            let depts = [...new Set(currentReportData.map(r => r.dept))];
 
-                currentDept = row.dept;
-                deptSubtotalQty += row.qty;
-                deptSubtotalAmount += row.amount;
-                grandTotalAmount += row.amount;
+            // 2. 針對每個部門進行獨立的 [每日明細] -> [彙整小計] 渲染
+            depts.forEach(dept => {
+                let deptData = currentReportData.filter(r => r.dept === dept);
 
+                // --- 區塊 A：部門每日明細 ---
+                html += `<div class="dept-title">🏨 【${dept}】每日明細</div>`;
                 html += `
-                <tr>
-                    <td class="col-dept text-bold">${row.dept}</td>
-                    <td class="col-item">${row.item}</td>
-                    <td class="text-right">${row.qty}</td>
-                    <td class="col-price">${row.price}</td>
-                    <td class="col-amount">${row.amount.toLocaleString()}</td>
-                </tr>
+                    <table class="excel-table">
+                        <thead>
+                            <tr>
+                                <th class="col-date">點交日期</th>
+                                <th class="col-item">品項名稱</th>
+                                <th class="col-qty-readonly" title="司機當初點交確認的數量">物流點交量</th>
+                                <th class="col-qty-edit" title="財務可修改此數量來調整請款">請款數量📝</th>
+                                <th class="col-price">單價</th>
+                                <th class="col-amount">金額</th>
+                                <th class="col-note">財務備註📝</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                 `;
 
-                if (index === summaryArray.length - 1) {
+                deptData.forEach((row) => {
+                    let subtotal = row.qty * row.price;
                     html += `
-                    <tr class="subtotal-row">
-                        <td colspan="2" class="text-right">【${currentDept}】 小計：</td>
-                        <td class="text-right">${deptSubtotalQty}</td>
-                        <td></td>
-                        <td class="text-right">${deptSubtotalAmount.toLocaleString()}</td>
+                    <tr>
+                        <td class="col-date">${row.date}</td>
+                        <td class="col-item text-bold">${row.item}</td>
+                        <td class="col-qty-readonly">${row.originalQty}</td>
+                        <td class="col-qty-edit">
+                            <input type="number" class="edit-input qty-input" value="${row.qty}" onchange="updateQty(${row.globalIndex}, this.value)">
+                        </td>
+                        <td class="col-price">${formatMoney(row.price)}</td>
+                        <td class="col-amount">${formatMoney(subtotal)}</td>
+                        <td class="col-note">
+                            <input type="text" class="edit-input" value="${row.note}" onchange="updateNote(${row.globalIndex}, this.value)" placeholder="可備註扣款原因">
+                        </td>
                     </tr>
                     `;
-                }
+                });
+                html += `</tbody></table>`;
+
+                // --- 區塊 B：部門布品彙整與小計 ---
+                html += `<div class="summary-title">【${dept}】布品彙整</div>`;
+                html += `
+                    <table class="excel-table summary-table" style="width: 70%; margin-left: 0;">
+                        <thead>
+                            <tr>
+                                <th class="col-item">品項名稱</th>
+                                <th class="col-qty-edit">請款總數量</th>
+                                <th class="col-price">單價</th>
+                                <th class="col-amount">總金額 (未稅)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                let summaryMap = {};
+                deptData.forEach(row => {
+                    if (!summaryMap[row.item]) {
+                        summaryMap[row.item] = { item: row.item, qty: 0, price: row.price, amount: 0 };
+                    }
+                    summaryMap[row.item].qty += row.qty;
+                    summaryMap[row.item].amount += (row.qty * row.price);
+                });
+
+                let deptSubtotalAmount = 0;
+                Object.values(summaryMap).sort((a, b) => a.item.localeCompare(b.item)).forEach(row => {
+                    html += `
+                    <tr>
+                        <td class="col-item text-bold">${row.item}</td>
+                        <td class="text-right">${row.qty}</td>
+                        <td class="col-price">${formatMoney(row.price)}</td>
+                        <td class="col-amount">${formatMoney(row.amount)}</td>
+                    </tr>
+                    `;
+                    deptSubtotalAmount += row.amount;
+                });
+
+                // 累加到全公司大總計
+                grandTotalAmount += deptSubtotalAmount;
+
+                // 該部門小計列
+                html += `
+                        <tr class="subtotal-row">
+                            <td colspan="2" class="text-right">【${dept}】 彙整小計：</td>
+                            <td></td>
+                            <td class="text-right col-amount">${formatMoney(deptSubtotalAmount)}</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                `;
             });
 
-            let taxAmount = Math.round(grandTotalAmount * 0.05);
+            // 3. 全公司大彙整總計金額
+            let taxAmount = grandTotalAmount * 0.05;
             let totalWithTax = grandTotalAmount + taxAmount;
 
             html += `
-                    </tbody>
-                    <tfoot>
+                <div class="grand-total-section">
+                    <h2 style="margin-top: 0; color: #b91c1c; text-align: center;">💰 結算大彙整</h2>
+                    <table class="excel-table" style="width: 60%; margin: 0 auto;">
                         <tr class="grand-total-row">
-                            <td colspan="4" class="text-right">總計 (未稅)：</td>
-                            <td class="text-right">${grandTotalAmount.toLocaleString()}</td>
+                            <td class="text-right">各部門總計金額 (未稅)：</td>
+                            <td class="text-right col-amount">NT$ ${formatMoney(grandTotalAmount)}</td>
                         </tr>
                         <tr class="tax-row">
-                            <td colspan="4" class="text-right">總計 (含稅 5%)：</td>
-                            <td class="text-right">${totalWithTax.toLocaleString()}</td>
+                            <td class="text-right">各部門總計金額 (含稅 5%)：</td>
+                            <td class="text-right col-amount">NT$ ${formatMoney(totalWithTax)}</td>
                         </tr>
-                    </tfoot>
-                </table>
+                    </table>
+                </div>
             `;
 
             document.getElementById('resultsContainer').innerHTML = html;
         }
 
         // ==========================================
-        // 匯出 Excel 的強大功能 (使用 SheetJS)
+        // 匯出 Excel (完美對應新版結構)
         // ==========================================
         function exportToExcel() {
             if (currentReportData.length === 0) {
@@ -346,76 +351,66 @@
             const endDate = document.getElementById('endDatePicker').value;
             const hotel = document.getElementById('hotelSearch').value.trim();
 
-            // 建立一個新的 Excel 工作簿
             let wb = XLSX.utils.book_new();
             let exportData = [];
 
-            // 1. 寫入標題區
-            exportData.push(["百麒物流 - 飯店點交請款明細表"]);
+            // 標題區
+            exportData.push(["百麒物流 - 飯店點交請款明細與彙整表"]);
             exportData.push(["結算區間:", `${startDate} ~ ${endDate}`, "", "飯店篩選:", hotel || "全部"]);
-            exportData.push([]); // 空行
-
-            // 2. 寫入明細表標頭
-            exportData.push(["點交日期", "飯店 / 部門", "品項名稱", "物流點交量", "請款數量", "單價", "金額", "財務備註"]);
-            
-            // 寫入明細資料
-            currentReportData.forEach(row => {
-                exportData.push([row.date, row.dept, row.item, row.originalQty, row.qty, row.price, row.qty * row.price, row.note]);
-            });
-
-            exportData.push([]); 
             exportData.push([]); 
 
-            // 3. 寫入匯總表標題
-            exportData.push(["📊 本區間各部門品項結算匯總表"]);
-            exportData.push(["飯店 / 部門", "品項名稱", "請款總數量", "單價", "總金額 (未稅)"]);
-
-            // 重新計算匯總資料
-            let summaryMap = {};
-            currentReportData.forEach(row => {
-                let key = row.dept + "|||" + row.item;
-                if (!summaryMap[key]) {
-                    summaryMap[key] = { dept: row.dept, item: row.item, qty: 0, price: row.price, amount: 0 };
-                }
-                summaryMap[key].qty += row.qty;
-                summaryMap[key].amount += (row.qty * row.price);
-            });
-
-            let summaryArray = Object.values(summaryMap);
-            summaryArray.sort((a, b) => a.dept.localeCompare(b.dept) || a.item.localeCompare(b.item));
-
-            let currentDept = "";
-            let deptSubtotalQty = 0;
-            let deptSubtotalAmount = 0;
+            let depts = [...new Set(currentReportData.map(r => r.dept))];
             let grandTotalAmount = 0;
 
-            summaryArray.forEach((row, index) => {
-                if (currentDept !== "" && currentDept !== row.dept) {
-                    exportData.push(["", `【${currentDept}】 小計：`, deptSubtotalQty, "", deptSubtotalAmount]);
-                    deptSubtotalQty = 0;
-                    deptSubtotalAmount = 0;
-                }
+            depts.forEach(dept => {
+                let deptData = currentReportData.filter(r => r.dept === dept);
 
-                currentDept = row.dept;
-                deptSubtotalQty += row.qty;
-                deptSubtotalAmount += row.amount;
-                grandTotalAmount += row.amount;
+                // --- 寫入：部門明細 ---
+                exportData.push([`🏨 【${dept}】每日明細`]);
+                exportData.push(["點交日期", "品項名稱", "物流點交量", "請款數量", "單價", "金額", "財務備註"]);
+                
+                deptData.forEach(row => {
+                    // Excel 會自動識別為數字，不使用 formatMoney 以保留後續加總彈性
+                    let rawAmount = row.qty * row.price; 
+                    exportData.push([row.date, row.item, row.originalQty, row.qty, row.price, rawAmount, row.note]);
+                });
 
-                exportData.push([row.dept, row.item, row.qty, row.price, row.amount]);
+                exportData.push([]); 
 
-                if (index === summaryArray.length - 1) {
-                    exportData.push(["", `【${currentDept}】 小計：`, deptSubtotalQty, "", deptSubtotalAmount]);
-                }
+                // --- 寫入：部門彙整 ---
+                exportData.push([`📊 【${dept}】布品彙整`]);
+                exportData.push(["品項名稱", "請款總數量", "單價", "總金額 (未稅)"]);
+
+                let summaryMap = {};
+                deptData.forEach(row => {
+                    if (!summaryMap[row.item]) {
+                        summaryMap[row.item] = { item: row.item, qty: 0, price: row.price, amount: 0 };
+                    }
+                    summaryMap[row.item].qty += row.qty;
+                    summaryMap[row.item].amount += (row.qty * row.price);
+                });
+
+                let deptSubtotalAmount = 0;
+                Object.values(summaryMap).sort((a, b) => a.item.localeCompare(b.item)).forEach(row => {
+                    exportData.push([row.item, row.qty, row.price, row.amount]);
+                    deptSubtotalAmount += row.amount;
+                });
+
+                exportData.push(["", `【${dept}】 彙整小計：`, "", deptSubtotalAmount]);
+                exportData.push([]); 
+                exportData.push([]); 
+
+                grandTotalAmount += deptSubtotalAmount;
             });
 
-            let taxAmount = Math.round(grandTotalAmount * 0.05);
+            // --- 寫入：大總計 ---
+            let taxAmount = Math.round(grandTotalAmount * 0.05 * 100) / 100;
             let totalWithTax = grandTotalAmount + taxAmount;
 
-            exportData.push([]);
-            exportData.push(["", "", "", "總計 (未稅)：", grandTotalAmount]);
-            exportData.push(["", "", "", "總計 (含稅 5%)：", totalWithTax]);
+            exportData.push(["💰 結算大彙整"]);
+            exportData.push(["", "", "各部門總計金額 (未稅)：", grandTotalAmount]);
+            exportData.push(["", "", "各部門總計金額 (含稅 5%)：", totalWithTax]);
 
-            // 將陣列轉換成 Excel 工作表並下載
             let ws = XLSX.utils.aoa_to_sheet(exportData);
             XLSX.utils.book_append_sheet(wb, ws, "財務報表");
             XLSX.writeFile(wb, `百麒財務報表_${startDate}_至_${endDate}.xlsx`);
