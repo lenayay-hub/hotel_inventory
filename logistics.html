@@ -87,7 +87,7 @@
         let currentDate = "";
         let groupedData = {}; 
         let activeDeptKey = ""; 
-        let masterTemplateOrder = []; // 儲存正確的排序順序
+        let globalItemOrder = {}; // 強制順序字典
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
@@ -100,12 +100,8 @@
 
         function setupDateLimits() {
             const today = new Date();
-            const prevMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1); 
-            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0); 
-            const dp = document.getElementById('datePicker');
-            dp.min = getLocalDateString(prevMonth);
-            dp.max = getLocalDateString(nextMonth);
-            dp.value = getLocalDateString(today);
+            // 物流通常看今天的單，預設停在今天
+            document.getElementById('datePicker').value = getLocalDateString(today);
             updateDateDisplay();
         }
 
@@ -135,32 +131,45 @@
             document.getElementById('hotelTitle').innerText = currentHotel + " 點交";
             setupDateLimits();
 
-            // 背景獲取基礎設定的正確順序
+            // 抓取基礎設定，建立「順序字典」
             try {
                 const tempRes = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                 const tempData = await tempRes.json();
-                masterTemplateOrder = tempData.template || [];
+                let template = tempData.template || [];
+                template.forEach((t, idx) => {
+                    if (globalItemOrder[t.item] === undefined) {
+                        globalItemOrder[t.item] = idx; // 記下每個品項的正確排隊號碼
+                    }
+                });
             } catch(e) {}
 
             fetchData();
         }
 
         async function fetchData() {
-            document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg">載入資料中...</div>';
+            document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-10 text-gray-500 font-bold text-lg animate-pulse">載入資料中...</div>';
             groupedData = {}; 
 
             try {
                 let fetchUrl = `${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`;
-                
                 const res = await fetch(fetchUrl);
-                const data = await res.json();
+                const rawData = await res.json();
 
-                if (data.length === 0) {
+                // 🛡️【前端防護網 1】：強制去重複！
+                // 即使後台送來兩天的幽靈資料，我們在這裡強行過濾，只留最新的一筆
+                let uniqueDataMap = {};
+                rawData.forEach(item => {
+                    let key = item.deptName + "_" + item.itemName;
+                    uniqueDataMap[key] = item; 
+                });
+                const cleanData = Object.values(uniqueDataMap);
+
+                if (cleanData.length === 0) {
                     document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">此日期無待點交資料！</div>';
                     return;
                 }
 
-                data.forEach(item => {
+                cleanData.forEach(item => {
                     if (!groupedData[item.deptName]) {
                         groupedData[item.deptName] = { items: [], clientSig: item.clientSig, driverSig: item.driverSig };
                     }
@@ -202,13 +211,11 @@
                     actionButton = `<button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md">📝 進行點交與簽名</button>`;
                 }
 
-                // ★ 在這裡加入強制的排序邏輯，比對 masterTemplateOrder
+                // 🛡️【前端防護網 2】：強制依照範本字典排序！
                 groupedData[dept].items.sort((a, b) => {
-                    let indexA = masterTemplateOrder.findIndex(t => t.hotel.includes(dept) && t.item === a.itemName);
-                    let indexB = masterTemplateOrder.findIndex(t => t.hotel.includes(dept) && t.item === b.itemName);
-                    if (indexA === -1) indexA = 9999;
-                    if (indexB === -1) indexB = 9999;
-                    return indexA - indexB;
+                    let idxA = globalItemOrder[a.itemName] !== undefined ? globalItemOrder[a.itemName] : 9999;
+                    let idxB = globalItemOrder[b.itemName] !== undefined ? globalItemOrder[b.itemName] : 9999;
+                    return idxA - idxB;
                 });
 
                 let itemsHtml = groupedData[dept].items.map((item, idx) => `
