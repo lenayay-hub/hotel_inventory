@@ -87,6 +87,7 @@
         let currentDate = "";
         let groupedData = {}; 
         let activeDeptKey = ""; 
+        let masterTemplateOrder = []; // 儲存正確的排序順序
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
@@ -133,6 +134,14 @@
 
             document.getElementById('hotelTitle').innerText = currentHotel + " 點交";
             setupDateLimits();
+
+            // 背景獲取基礎設定的正確順序
+            try {
+                const tempRes = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                const tempData = await tempRes.json();
+                masterTemplateOrder = tempData.template || [];
+            } catch(e) {}
+
             fetchData();
         }
 
@@ -184,7 +193,6 @@
                 let actionButton = "";
 
                 if (isCompleted) {
-                    // ★ 雙方簽完名後，只顯示已點收完畢的文字，保留上方明細
                     actionButton = `<div class="w-full mt-2 py-4 text-green-700 font-black text-2xl text-center bg-green-50 rounded-xl border-2 border-green-200">✅ 已點收完畢</div>`;
                 } else if (hasClientSig && !hasDriverSig) {
                     actionButton = `<button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-orange-500 text-white rounded-xl font-bold text-lg shadow-md animate-pulse">🚚 等待司機簽名確認</button>`;
@@ -193,6 +201,15 @@
                 } else {
                     actionButton = `<button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md">📝 進行點交與簽名</button>`;
                 }
+
+                // ★ 在這裡加入強制的排序邏輯，比對 masterTemplateOrder
+                groupedData[dept].items.sort((a, b) => {
+                    let indexA = masterTemplateOrder.findIndex(t => t.hotel.includes(dept) && t.item === a.itemName);
+                    let indexB = masterTemplateOrder.findIndex(t => t.hotel.includes(dept) && t.item === b.itemName);
+                    if (indexA === -1) indexA = 9999;
+                    if (indexB === -1) indexB = 9999;
+                    return indexA - indexB;
+                });
 
                 let itemsHtml = groupedData[dept].items.map((item, idx) => `
                     <div class="border-b border-gray-100 py-4 last:border-0">
