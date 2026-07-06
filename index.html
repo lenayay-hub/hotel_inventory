@@ -178,7 +178,7 @@
         }
 
         async function init() {
-            // ★ 修改這裡：一打開系統，自動抓取明天的日期
+            // ★ 一打開系統，自動抓取明天的日期
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             document.getElementById('datePicker').value = getLocalDateString(tomorrow);
