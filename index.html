@@ -42,7 +42,6 @@
     </div>
 
     <div class="main-container">
-        
         <!-- ==================== 【首頁：飯店選擇入口】 ==================== -->
         <div id="homeView">
             <div class="flex justify-between items-center mb-6 mt-2 px-1">
@@ -57,17 +56,10 @@
                     <span class="absolute left-4 top-4 text-gray-400 text-2xl">🔍</span>
                     <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-xl font-bold pl-12 pr-4 outline-none" placeholder="輸入關鍵字..." oninput="renderHome()">
                 </div>
-
-                <div class="relative w-full bg-blue-50 border-2 border-blue-200 rounded-xl h-16 flex items-center justify-center overflow-hidden">
-                    <div id="homeSelectDisplay" class="w-full text-center font-black text-xl pointer-events-none text-blue-800">-- 點此展開清單 --</div>
-                    <select id="homeSelect" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="goToHotel(this.value)">
-                        <option value="">載入中...</option>
-                    </select>
-                </div>
             </div>
 
             <div id="hotelGrid" class="grid grid-cols-2 gap-4 pb-10">
-                <div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl">資料同步中...</div>
+                <div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl animate-pulse">資料同步中...</div>
             </div>
         </div>
 
@@ -104,7 +96,7 @@
         </div>
     </div>
 
-    <!-- 簽名板 Modal (支援阿姨與主管兩種身份) -->
+    <!-- 簽名板 Modal -->
     <div id="signModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[10000]" onclick="if(event.target === this) closeSign()">
         <div class="bg-white p-4 rounded-3xl w-full max-w-sm" onclick="event.stopPropagation()">
             <div class="flex justify-between items-center mb-3">
@@ -180,12 +172,17 @@
             setTimeout(() => toast.classList.add('opacity-0'), 2500);
         }
 
+        // 強制校正為台灣時區的年月日
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
 
         async function init() {
-            document.getElementById('datePicker').value = getLocalDateString(new Date());
+            // ★ 修改這裡：一打開系統，自動抓取明天的日期
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('datePicker').value = getLocalDateString(tomorrow);
+            
             updateDateDisplay();
             goHome();
             document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
@@ -203,14 +200,9 @@
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
                         userInputs[r.date][r.hotel][r.item] = { 
-                            count: r.count, 
-                            note: r.note, 
-                            hasSigned: false, 
-                            isSubmitted: true, 
-                            signature: r.signature || "",
-                            doubleCount: r.doubleCount || "",
-                            doubleSignature: r.doubleSignature || "",
-                            doubleHasSigned: false
+                            count: r.count, note: r.note, hasSigned: false, isSubmitted: true, 
+                            signature: r.signature || "", doubleCount: r.doubleCount || "",
+                            doubleSignature: r.doubleSignature || "", doubleHasSigned: false
                         };
                     });
                 }
@@ -225,15 +217,6 @@
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allCategories.filter(c => c.toLowerCase().includes(keyword));
             
-            const select = document.getElementById('homeSelect');
-            if (filtered.length > 0) {
-                select.innerHTML = '<option value="">-- 點擊選擇飯店 --</option>' + filtered.map(c => `<option value="${c}">${c}</option>`).join('');
-                document.getElementById('homeSelectDisplay').innerText = "-- 點此展開清單 --";
-            } else {
-                select.innerHTML = '<option value="">無符合結果</option>';
-                document.getElementById('homeSelectDisplay').innerText = "找不到相關飯店";
-            }
-
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
                 grid.innerHTML = filtered.map(c => `
@@ -252,7 +235,6 @@
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('hotelView').classList.remove('hidden');
             document.getElementById('currentHotelTitle').innerText = hotelName;
-            document.getElementById('homeSelect').value = ""; 
             renderItems();
         }
 
@@ -296,15 +278,11 @@
             const u = (userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][item]) || {};
             
             if (role === 'aunt') {
-                if (u.doubleSignature) {
-                    return showMessage("🔒 複點主管已簽名！\n現場數量已被完全鎖定，無法修改囉！");
-                }
-                const hasSigned = u.hasSigned;
-                if (!hasSigned) return openSign(currentHotelName, item, 'aunt');
+                if (u.doubleSignature) return showMessage("🔒 複點主管已簽名！\n現場數量已被完全鎖定，無法修改囉！");
+                if (!u.hasSigned) return openSign(currentHotelName, item, 'aunt');
                 openCalc(currentHotelName, item, 'aunt');
             } else if (role === 'sup') {
-                const doubleHasSigned = u.doubleHasSigned;
-                if (!doubleHasSigned) return openSign(currentHotelName, item, 'sup');
+                if (!u.doubleHasSigned) return openSign(currentHotelName, item, 'sup');
                 openCalc(currentHotelName, item, 'sup');
             }
         }
