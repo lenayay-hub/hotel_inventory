@@ -88,14 +88,13 @@ html
         let currentDate = "";
         let groupedData = {}; 
         let activeDeptKey = ""; 
-        let globalItemOrder = {}; // 強制順序字典
+        let globalItemOrder = {}; 
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
         const clientCtx = clientCanvas.getContext('2d');
         const driverCtx = driverCanvas.getContext('2d');
 
-        // 優化的載入動畫 UI
         const loadingHtml = `
             <div class="flex flex-col items-center justify-center py-12 space-y-4">
                 <svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -113,7 +112,6 @@ html
 
         function setupDateLimits() {
             const today = new Date();
-            // 物流通常看今天的單，預設停在今天
             document.getElementById('datePicker').value = getLocalDateString(today);
             updateDateDisplay();
         }
@@ -144,20 +142,15 @@ html
             document.getElementById('hotelTitle').innerText = currentHotel + " 點交";
             setupDateLimits();
             
-            // 顯示加速版載入動畫
             document.getElementById('departmentsContainer').innerHTML = loadingHtml;
             groupedData = {}; 
 
             try {
-                // 🚀 超跑加速核心：平行發送請求 (Promise.all)
-                // 原本要等 A 跑完再跑 B (花費 2+2=4秒)，現在 A 跟 B 一起跑 (只要 2 秒)！
                 const templatePromise = fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`).then(res => res.json());
                 const dataPromise = fetch(`${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`).then(res => res.json());
 
-                // 同時等待兩個資料回來
                 const [tempData, rawData] = await Promise.all([templatePromise, dataPromise]);
 
-                // 處理字典排序
                 let template = tempData.template || [];
                 template.forEach((t, idx) => {
                     if (globalItemOrder[t.item] === undefined) {
@@ -165,7 +158,6 @@ html
                     }
                 });
 
-                // 處理並顯示資料
                 processAndRenderData(rawData);
 
             } catch(err) {
@@ -174,7 +166,6 @@ html
         }
 
         async function fetchData() {
-            // 切換日期時的載入動畫
             document.getElementById('departmentsContainer').innerHTML = loadingHtml.replace("雲端資料同步中...", "切換日期讀取中...");
             groupedData = {}; 
 
@@ -188,9 +179,7 @@ html
             }
         }
 
-        // 將處理與渲染邏輯獨立出來，讓程式碼更簡潔飛快
         function processAndRenderData(rawData) {
-            // 🛡️【前端防護網 1】：強制去重複！
             let uniqueDataMap = {};
             rawData.forEach(item => {
                 let key = item.deptName + "_" + item.itemName;
@@ -242,24 +231,16 @@ html
                     actionButton = `<button onclick="openSignModal('${dept}')" class="w-full mt-4 p-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-md">📝 進行點交與簽名</button>`;
                 }
 
-                // 🛡️【前端防護網 2】：強制依照範本字典排序！
                 groupedData[dept].items.sort((a, b) => {
                     let idxA = globalItemOrder[a.itemName] !== undefined ? globalItemOrder[a.itemName] : 9999;
                     let idxB = globalItemOrder[b.itemName] !== undefined ? globalItemOrder[b.itemName] : 9999;
                     return idxA - idxB;
                 });
 
-                let itemsHtml = groupedData[dept].items.map((item, idx) => {
-                    // 判斷是否為臨時新增品項
-                    let isNewItem = globalItemOrder[item.itemName] === undefined;
-                    
-                    return `
+                let itemsHtml = groupedData[dept].items.map((item, idx) => `
                     <div class="border-b border-gray-100 py-4 last:border-0">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="font-black text-2xl text-gray-800">
-                                ${item.itemName}
-                                ${isNewItem ? '<span class="bg-yellow-100 text-yellow-700 text-sm px-2 py-1 rounded-lg ml-2 align-middle border border-yellow-200 shadow-sm">臨時新增</span>' : ''}
-                            </span>
+                            <span class="font-black text-2xl text-gray-800">${item.itemName}</span>
                             <div class="text-right">
                                 <span class="text-xs text-gray-400 block">盤點出貨</span>
                                 <span class="font-bold text-2xl text-gray-400">${item.originalQty}</span>
@@ -279,7 +260,7 @@ html
                             </div>
                         </div>
                     </div>
-                `}).join('');
+                `).join('');
 
                 html += `
                 <div class="bg-white p-4 rounded-2xl shadow-md border border-gray-200 mb-6">
