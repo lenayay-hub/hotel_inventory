@@ -86,7 +86,7 @@
 
             <!-- 新增臨時品項區塊 -->
             <div class="mt-8 bg-blue-50 p-5 rounded-2xl shadow-sm border-2 border-dashed border-blue-300">
-                <h2 class="text-xl font-black mb-3 text-blue-800">➕ 找不到品項？自己新增</h2>
+                <h2 class="text-xl font-black mb-3 text-blue-800">➕ 找不到品項？今日臨時新增</h2>
                 <div class="flex gap-2">
                     <input id="newItemInput" class="flex-1 p-4 text-xl font-bold border-2 border-blue-200 rounded-xl outline-none focus:border-blue-500" placeholder="輸入新布品名稱...">
                     <button onclick="addNewItem()" class="p-4 bg-green-600 text-white rounded-xl font-black text-xl shadow-md active:bg-green-700 whitespace-nowrap">新增</button>
@@ -178,7 +178,7 @@
         }
 
         async function init() {
-            // ★ 一打開系統，自動抓取明天的日期
+            // 一打開系統，自動抓取明天的日期
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             document.getElementById('datePicker').value = getLocalDateString(tomorrow);
@@ -204,13 +204,9 @@
                             signature: r.signature || "", doubleCount: r.doubleCount || "",
                             doubleSignature: r.doubleSignature || "", doubleHasSigned: false
                         };
-
-                        // 🛠️ 核心修復：如果雲端紀錄中有這個品項，但基礎設定(範本)裡沒有，代表是阿姨「臨時新增」的！
-                        // 必須把它強行加回當前的選單畫面上，這樣領班/主管才能看到並「複點簽名」！
-                        const exists = masterData.some(d => d.hotel === r.hotel && d.item === r.item);
-                        if (!exists && r.item) {
-                            masterData.push({ hotel: r.hotel, item: r.item });
-                        }
+                        
+                        // ★ 核心修復：移除了之前把歷史紀錄塞進 masterData 的錯誤邏輯！
+                        // 現在 masterData 永遠只會保持「基礎設定」裡面最乾淨的原始名單！
                     });
                 }
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
@@ -268,14 +264,29 @@
         function addNewItem() {
             const inputEl = document.getElementById('newItemInput');
             const newItemName = inputEl.value.trim();
+            const dateStr = document.getElementById('datePicker').value;
+
             if (!newItemName) return showMessage("請輸入要新增的品項名稱喔！");
             
-            const exists = masterData.some(d => d.hotel === currentHotelName && d.item === newItemName);
-            if (exists) return showMessage("這個品項已經在列表裡面囉！");
+            // 檢查是否原本就在基礎設定裡
+            const inTemplate = masterData.some(d => d.hotel === currentHotelName && d.item === newItemName);
+            // 檢查是否今天已經加過了
+            const inToday = userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][newItemName];
+
+            if (inTemplate || inToday) return showMessage("這個品項已經在今天的列表裡面囉！");
             
-            masterData.push({ hotel: currentHotelName, item: newItemName });
+            // ★ 核心修復：我們不把新品項塞進 masterData 了！
+            // 我們直接幫他在「今天」的資料庫裡建立一個空位，這樣他只會活在今天！
+            if (!userInputs[dateStr]) userInputs[dateStr] = {};
+            if (!userInputs[dateStr][currentHotelName]) userInputs[dateStr][currentHotelName] = {};
+            
+            userInputs[dateStr][currentHotelName][newItemName] = { 
+                count: '', note: '', hasSigned: false, isSubmitted: false, 
+                signature: '', doubleCount: '', doubleSignature: '', doubleHasSigned: false 
+            };
+
             inputEl.value = ""; 
-            showToast("✅ 已為您新增品項！");
+            showToast("✅ 已為您新增「今日」臨時品項！");
             renderItems(); 
             setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
         }
@@ -298,11 +309,22 @@
             const dateStr = document.getElementById('datePicker').value;
             if (!currentHotelName) return;
 
-            const filteredData = masterData.filter(d => d.hotel === currentHotelName);
+            // 1. 先抓取「基礎設定」裡原汁原味的乾淨名單
+            let displayItems = masterData.filter(d => d.hotel === currentHotelName).map(d => d.item);
+
+            // 2. 檢查「今天」有沒有阿姨臨時新增的東西？有的話，排在最下面
+            const todayInputs = (userInputs[dateStr] && userInputs[dateStr][currentHotelName]) || {};
+            for (let itemName in todayInputs) {
+                if (!displayItems.includes(itemName)) {
+                    displayItems.push(itemName);
+                }
+            }
+
             let htmlContent = "";
 
-            filteredData.forEach(d => {
-                const u = (userInputs[dateStr] && userInputs[dateStr][d.hotel] && userInputs[dateStr][d.hotel][d.item]) || {};
+            // 開始畫出畫面
+            displayItems.forEach(itemName => {
+                const u = todayInputs[itemName] || {};
                 const count = u.count || '';
                 const doubleCount = u.doubleCount || '';
                 const hasSigned = u.hasSigned || false;
@@ -318,11 +340,11 @@
                     auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300">🔒 已被複點鎖定</div>`;
                     auntDisplayClass = "bg-gray-200 text-gray-500 border-gray-300";
                 } else if (isSubmitted && !hasSigned) {
-                    auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm text-center border border-gray-300 shadow-sm active:bg-gray-200">✅ 存檔(點此重簽)</button>`;
+                    auntActionButton = `<button onclick="openSign('${currentHotelName}', '${itemName}', 'aunt')" class="w-full py-2 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm text-center border border-gray-300 shadow-sm active:bg-gray-200">✅ 存檔(點此重簽)</button>`;
                 } else if (hasSigned) {
                     auntActionButton = `<div class="w-full py-2 bg-blue-100 text-blue-700 rounded-lg font-bold text-sm text-center border border-blue-200 animate-pulse">👆 請輸入數量</div>`;
                 } else {
-                    auntActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'aunt')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-blue-700">第一步-簽名</button>`;
+                    auntActionButton = `<button onclick="openSign('${currentHotelName}', '${itemName}', 'aunt')" class="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-blue-700">第一步-簽名</button>`;
                 }
 
                 let supDisplayClass = doubleHasSigned ? "bg-white text-blue-800 border-green-500 shadow-inner" : "bg-white text-blue-400 border-blue-200";
@@ -330,21 +352,21 @@
                 let supActionButton = "";
 
                 if (isSubmitted && !doubleHasSigned && u.doubleSignature) {
-                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-sm text-center border border-green-200 shadow-sm active:bg-green-100">✅ 複點完成(重簽)</button>`;
+                    supActionButton = `<button onclick="openSign('${currentHotelName}', '${itemName}', 'sup')" class="w-full py-2 bg-green-50 text-green-700 rounded-lg font-bold text-sm text-center border border-green-200 shadow-sm active:bg-green-100">✅ 複點完成(重簽)</button>`;
                 } else if (doubleHasSigned) {
                     supActionButton = `<div class="w-full py-2 bg-orange-50 text-orange-600 rounded-lg font-bold text-sm text-center border border-orange-200 animate-pulse">👆 請輸入數量</div>`;
                 } else {
-                    supActionButton = `<button onclick="openSign('${d.hotel}', '${d.item}', 'sup')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-green-700">第二步-複點簽名</button>`;
+                    supActionButton = `<button onclick="openSign('${currentHotelName}', '${itemName}', 'sup')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-green-700">第二步-複點簽名</button>`;
                 }
 
                 htmlContent += `
                 <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden">
-                    <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${d.item}</div>
+                    <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${itemName}</div>
                     
                     <div class="flex gap-2 mb-4 relative z-20">
                         <div class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
                             <div class="text-sm font-bold text-gray-500 mb-2 text-center">現場數量</div>
-                            <div onclick="handleItemClick('${d.item}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">
+                            <div onclick="handleItemClick('${itemName}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">
                                 ${auntText}
                             </div>
                             ${auntActionButton}
@@ -352,7 +374,7 @@
                         
                         <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
                             <div class="text-sm font-bold text-blue-700 mb-2 text-center">複點數量</div>
-                            <div onclick="handleItemClick('${d.item}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">
+                            <div onclick="handleItemClick('${itemName}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">
                                 ${supText}
                             </div>
                             ${supActionButton}
@@ -360,8 +382,8 @@
                     </div>
                     
                     <input type="text" 
-                        oninput="handleInput('${dateStr}', '${d.hotel}', '${d.item}', 'note', this.value)"
-                        onchange="submitItemToServer('${d.hotel}', '${d.item}')"
+                        oninput="handleInput('${dateStr}', '${currentHotelName}', '${itemName}', 'note', this.value)"
+                        onchange="submitItemToServer('${currentHotelName}', '${itemName}')"
                         value="${u.note || ''}" 
                         class="w-full p-3 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20 focus:border-blue-500" 
                         placeholder="📝 點此可寫備註(寫完自動存)">
