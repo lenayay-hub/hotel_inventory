@@ -204,6 +204,13 @@
                             signature: r.signature || "", doubleCount: r.doubleCount || "",
                             doubleSignature: r.doubleSignature || "", doubleHasSigned: false
                         };
+
+                        // 🛠️ 核心修復：如果雲端紀錄中有這個品項，但基礎設定(範本)裡沒有，代表是阿姨「臨時新增」的！
+                        // 必須把它強行加回當前的選單畫面上，這樣領班/主管才能看到並「複點簽名」！
+                        const exists = masterData.some(d => d.hotel === r.hotel && d.item === r.item);
+                        if (!exists && r.item) {
+                            masterData.push({ hotel: r.hotel, item: r.item });
+                        }
                     });
                 }
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
