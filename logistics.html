@@ -1,3 +1,4 @@
+html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -248,10 +249,17 @@
                     return idxA - idxB;
                 });
 
-                let itemsHtml = groupedData[dept].items.map((item, idx) => `
+                let itemsHtml = groupedData[dept].items.map((item, idx) => {
+                    // 判斷是否為臨時新增品項
+                    let isNewItem = globalItemOrder[item.itemName] === undefined;
+                    
+                    return `
                     <div class="border-b border-gray-100 py-4 last:border-0">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="font-black text-2xl text-gray-800">${item.itemName}</span>
+                            <span class="font-black text-2xl text-gray-800">
+                                ${item.itemName}
+                                ${isNewItem ? '<span class="bg-yellow-100 text-yellow-700 text-sm px-2 py-1 rounded-lg ml-2 align-middle border border-yellow-200 shadow-sm">臨時新增</span>' : ''}
+                            </span>
                             <div class="text-right">
                                 <span class="text-xs text-gray-400 block">盤點出貨</span>
                                 <span class="font-bold text-2xl text-gray-400">${item.originalQty}</span>
@@ -271,7 +279,7 @@
                             </div>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
 
                 html += `
                 <div class="bg-white p-4 rounded-2xl shadow-md border border-gray-200 mb-6">
