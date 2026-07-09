@@ -193,9 +193,22 @@
 
             cleanData.forEach(item => {
                 if (!groupedData[item.deptName]) {
-                    groupedData[item.deptName] = { items: [], clientSig: item.clientSig, driverSig: item.driverSig };
+                    groupedData[item.deptName] = { items: [], clientSig: "", driverSig: "" };
                 }
-                groupedData[item.deptName].items.push(item);
+                
+                // ★ 抓取該部門的專屬簽名 (不再存入每一個 item 中造成爆量)
+                if (item.clientSig) groupedData[item.deptName].clientSig = item.clientSig;
+                if (item.driverSig) groupedData[item.deptName].driverSig = item.driverSig;
+
+                // ★ 乾淨瘦身：我們只把「數字跟備註」存進去，徹底排除那一大串會讓 Google 當機的圖片亂碼！
+                groupedData[item.deptName].items.push({
+                    deptName: item.deptName,
+                    itemName: item.itemName,
+                    originalQty: item.originalQty,
+                    auntNote: item.auntNote,
+                    actualQty: item.actualQty,
+                    driverNote: item.driverNote
+                });
             });
             renderDepartments();
         }
@@ -322,21 +335,30 @@
             let existClient = groupedData[activeDeptKey].clientSig;
             let existDriver = groupedData[activeDeptKey].driverSig;
             
-            // ★ 核心修復：如果畫布判定為空白（或載入太慢），強制繼承原本就存在的簽名圖片！絕不蓋掉原本的簽名！
-            let cBase64 = cBlank ? (existClient || "") : clientCanvas.toDataURL();
-            let dBase64 = dBlank ? (existDriver || "") : driverCanvas.toDataURL();
+            let cBase64 = cBlank ? (existClient || "") : clientCanvas.toDataURL('image/png');
+            let dBase64 = dBlank ? (existDriver || "") : driverCanvas.toDataURL('image/png');
 
             if (!cBase64 && !dBase64) return alert("請至少一方完成簽名！(司機或飯店)");
 
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
 
+            // ★ 核心修復：我們在存檔前，確保把物品陣列乾淨無瑕地轉成 JSON，避開 5萬字的崩潰極限！
+            let safeItemsForDatabase = groupedData[activeDeptKey].items.map(item => ({
+                deptName: item.deptName,
+                itemName: item.itemName,
+                originalQty: item.originalQty,
+                auntNote: item.auntNote,
+                actualQty: item.actualQty,
+                driverNote: item.driverNote
+            }));
+
             const payload = {
                 type: 'logistics',
                 hotelKeyword: currentHotel,
                 deptName: activeDeptKey,
                 date: currentDate,
-                verifyJson: JSON.stringify(groupedData[activeDeptKey].items),
+                verifyJson: JSON.stringify(safeItemsForDatabase), // 現在送出的資料非常輕薄短小！
                 clientSigBase64: cBase64,
                 driverSigBase64: dBase64
             };
@@ -349,14 +371,11 @@
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
                 
-                // 將新送出的簽名直接存到當前的網頁記憶體中
                 if (cBase64) groupedData[activeDeptKey].clientSig = cBase64;
                 if (dBase64) groupedData[activeDeptKey].driverSig = dBase64;
 
                 closeSignModal();
                 
-                // ★ 核心修復：拔除原本的 fetchData()！因為送出後 Google 還沒存完，馬上重抓會抓到舊的資料！
-                // 現在改成直接利用網頁記憶體來更新畫面，保證瞬間變成 ✅ 已點收完畢！
                 renderDepartments(); 
                 
                 const toast = document.getElementById('toast');
