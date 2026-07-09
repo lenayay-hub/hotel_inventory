@@ -196,11 +196,9 @@
                     groupedData[item.deptName] = { items: [], clientSig: "", driverSig: "" };
                 }
                 
-                // ★ 抓取該部門的專屬簽名 (不再存入每一個 item 中造成爆量)
                 if (item.clientSig) groupedData[item.deptName].clientSig = item.clientSig;
                 if (item.driverSig) groupedData[item.deptName].driverSig = item.driverSig;
 
-                // ★ 乾淨瘦身：我們只把「數字跟備註」存進去，徹底排除那一大串會讓 Google 當機的圖片亂碼！
                 groupedData[item.deptName].items.push({
                     deptName: item.deptName,
                     itemName: item.itemName,
@@ -343,7 +341,6 @@
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
 
-            // ★ 核心修復：我們在存檔前，確保把物品陣列乾淨無瑕地轉成 JSON，避開 5萬字的崩潰極限！
             let safeItemsForDatabase = groupedData[activeDeptKey].items.map(item => ({
                 deptName: item.deptName,
                 itemName: item.itemName,
@@ -358,7 +355,7 @@
                 hotelKeyword: currentHotel,
                 deptName: activeDeptKey,
                 date: currentDate,
-                verifyJson: JSON.stringify(safeItemsForDatabase), // 現在送出的資料非常輕薄短小！
+                verifyJson: JSON.stringify(safeItemsForDatabase),
                 clientSigBase64: cBase64,
                 driverSigBase64: dBase64
             };
