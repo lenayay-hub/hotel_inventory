@@ -322,10 +322,11 @@
             let existClient = groupedData[activeDeptKey].clientSig;
             let existDriver = groupedData[activeDeptKey].driverSig;
             
-            let cBase64 = cBlank ? "" : clientCanvas.toDataURL();
-            let dBase64 = dBlank ? "" : driverCanvas.toDataURL();
+            // ★ 核心修復：如果畫布判定為空白（或載入太慢），強制繼承原本就存在的簽名圖片！絕不蓋掉原本的簽名！
+            let cBase64 = cBlank ? (existClient || "") : clientCanvas.toDataURL();
+            let dBase64 = dBlank ? (existDriver || "") : driverCanvas.toDataURL();
 
-            if ((!existClient && cBlank) && (!existDriver && dBlank)) return alert("請至少一方完成簽名！(司機或飯店)");
+            if (!cBase64 && !dBase64) return alert("請至少一方完成簽名！(司機或飯店)");
 
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
@@ -348,11 +349,16 @@
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
                 
+                // 將新送出的簽名直接存到當前的網頁記憶體中
                 if (cBase64) groupedData[activeDeptKey].clientSig = cBase64;
                 if (dBase64) groupedData[activeDeptKey].driverSig = dBase64;
 
                 closeSignModal();
-                fetchData(); 
+                
+                // ★ 核心修復：拔除原本的 fetchData()！因為送出後 Google 還沒存完，馬上重抓會抓到舊的資料！
+                // 現在改成直接利用網頁記憶體來更新畫面，保證瞬間變成 ✅ 已點收完畢！
+                renderDepartments(); 
+                
                 const toast = document.getElementById('toast');
                 toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
             })
