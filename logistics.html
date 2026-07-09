@@ -216,9 +216,9 @@
             const original = groupedData[dept].items[idx].originalQty;
             const statusSpan = document.getElementById(`status-${dept}-${idx}`);
             if (String(val) === String(original)) {
-                statusSpan.innerHTML = "✅ 相符"; statusSpan.className = "text-green-600 font-bold ml-2 text-sm";
+                statusSpan.innerHTML = "✅ 相符"; statusSpan.className = "text-green-600 font-bold ml-3 text-base";
             } else {
-                statusSpan.innerHTML = "❌ 不符"; statusSpan.className = "text-red-500 font-bold ml-2 text-sm";
+                statusSpan.innerHTML = "❌ 不符"; statusSpan.className = "text-red-500 font-bold ml-3 text-base";
             }
         }
 
@@ -247,7 +247,13 @@
                     return idxA - idxB;
                 });
 
-                let itemsHtml = groupedData[dept].items.map((item, idx) => `
+                let itemsHtml = groupedData[dept].items.map((item, idx) => {
+                    // ★ 核心修復：在一載入時就檢查「實際數字」和「原始數字」是否相符，而不是死死的預設 ✅ 相符
+                    let isMatching = String(item.actualQty) === String(item.originalQty);
+                    let statusText = isMatching ? "✅ 相符" : "❌ 不符";
+                    let statusClass = isMatching ? "text-green-600 font-bold ml-3 text-base" : "text-red-500 font-bold ml-3 text-base";
+                    
+                    return `
                     <div class="border-b border-gray-100 py-4 last:border-0">
                         <div class="flex justify-between items-center mb-2">
                             <span class="font-black text-2xl text-gray-800">${item.itemName}</span>
@@ -256,7 +262,7 @@
                                 <span class="font-bold text-2xl text-gray-400">${item.originalQty}</span>
                             </div>
                         </div>
-                        ${item.auntNote ? `<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: ${item.auntNote}</div>` : ''}
+                        ${item.auntNote ? \`<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: \${item.auntNote}</div>\` : ''}
                         
                         <div class="bg-blue-50 p-3 rounded-lg">
                             <div class="flex justify-between items-center">
@@ -265,12 +271,12 @@
                                     <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}" 
                                            class="w-20 p-1 text-right font-black text-2xl outline-none rounded ${isCompleted ? 'bg-transparent text-gray-600 pr-0' : 'bg-white border-b-2 border-blue-500 text-blue-700 shadow-sm'}" 
                                            ${isCompleted ? 'disabled' : ''}>
-                                    <span id="status-${dept}-${idx}" class="text-green-600 font-bold ml-3 text-base">✅ 相符</span>
+                                    <span id="status-${dept}-${idx}" class="${statusClass}">${statusText}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
 
                 html += `
                 <div class="bg-white p-4 rounded-2xl shadow-md border border-gray-200 mb-6">
