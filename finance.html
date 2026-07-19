@@ -115,6 +115,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
         let currentReportData = [];
+        let globalItemOrder = {}; // ★ 新增：儲存從基礎設定抓來的「品項絕對順序」
 
         // 金額格式化函數 (強制顯示小數點後兩位)
         function formatMoney(num) {
@@ -145,9 +146,21 @@
             container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 資料讀取與計算中... 請稍候</div>`;
             
             try {
-                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${hotel}&t=${new Date().getTime()}`);
-                const data = await res.json();
+                // ★ 雙管齊下：同時去後台抓「財務明細」與「基礎設定(為了排順序)」
+                const tempResPromise = fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`).then(res => res.json());
+                const financeResPromise = fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${hotel}&t=${new Date().getTime()}`).then(res => res.json());
+
+                const [tempData, data] = await Promise.all([tempResPromise, financeResPromise]);
                 
+                // ★ 建立強制排序字典：記下每一個品項應該排在第幾個位置
+                let template = tempData.template || [];
+                globalItemOrder = {};
+                template.forEach((t, idx) => {
+                    if (globalItemOrder[t.item] === undefined) {
+                        globalItemOrder[t.item] = idx;
+                    }
+                });
+
                 if(!data.records || data.records.length === 0) {
                     container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已簽收的點交紀錄。</div>`;
                     return;
@@ -155,7 +168,7 @@
                 
                 processData(data.records, data.prices || {});
             } catch(err) {
-                container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：${err.message}</div>`;
+                container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：請檢查網路連線</div>`;
             }
         }
 
@@ -185,7 +198,7 @@
                         item: itemName,
                         originalQty: actualQty,
                         qty: actualQty,         
-                        price: Number(unitPrice) || 0, // 確保單價是數字型態
+                        price: Number(unitPrice) || 0,
                         note: item.auntNote || item.driverNote || ""
                     });
                 });
@@ -196,8 +209,21 @@
                 return;
             }
 
-            // 先排序好，以利後續分部門渲染
-            currentReportData.sort((a, b) => a.dept.localeCompare(b.dept) || a.date.localeCompare(b.date) || a.item.localeCompare(b.item));
+            // ★ 核心修復：強制依照基礎設定排序！不再用筆畫排了！
+            currentReportData.sort((a, b) => {
+                // 1. 先照部門排
+                let deptCmp = a.dept.localeCompare(b.dept);
+                if (deptCmp !== 0) return deptCmp;
+
+                // 2. 再照日期排
+                let dateCmp = a.date.localeCompare(b.date);
+                if (dateCmp !== 0) return dateCmp;
+
+                // 3. 最後嚴格照「基礎設定」的順序排
+                let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
+                let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
+                return idxA - idxB;
+            });
             
             // 給每個物件一個唯一的全域 Index，用來對應修改框
             currentReportData.forEach((row, idx) => { row.globalIndex = idx; });
@@ -207,7 +233,7 @@
 
         function updateQty(globalIndex, val) {
             currentReportData[globalIndex].qty = parseInt(val) || 0;
-            renderReport(); // 重繪畫面重新計算
+            renderReport(); 
         }
 
         function updateNote(globalIndex, val) {
@@ -218,10 +244,8 @@
             let html = "";
             let grandTotalAmount = 0;
 
-            // 1. 抓出所有不重複的「飯店/部門」
             let depts = [...new Set(currentReportData.map(r => r.dept))];
 
-            // 2. 針對每個部門進行獨立的 [每日明細] -> [彙整小計] 渲染
             depts.forEach(dept => {
                 let deptData = currentReportData.filter(r => r.dept === dept);
 
@@ -288,7 +312,13 @@
                 });
 
                 let deptSubtotalAmount = 0;
-                Object.values(summaryMap).sort((a, b) => a.item.localeCompare(b.item)).forEach(row => {
+                
+                // ★ 彙整表一樣強制依照基礎設定排序
+                Object.values(summaryMap).sort((a, b) => {
+                    let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
+                    let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
+                    return idxA - idxB;
+                }).forEach(row => {
                     html += `
                     <tr>
                         <td class="col-item text-bold">${row.item}</td>
@@ -300,10 +330,8 @@
                     deptSubtotalAmount += row.amount;
                 });
 
-                // 累加到全公司大總計
                 grandTotalAmount += deptSubtotalAmount;
 
-                // 該部門小計列
                 html += `
                         <tr class="subtotal-row">
                             <td colspan="2" class="text-right">【${dept}】 彙整小計：</td>
@@ -315,7 +343,7 @@
                 `;
             });
 
-            // 3. 全公司大彙整總計金額
+            // 大總計
             let taxAmount = grandTotalAmount * 0.05;
             let totalWithTax = grandTotalAmount + taxAmount;
 
@@ -339,7 +367,7 @@
         }
 
         // ==========================================
-        // 匯出 Excel (完美對應新版結構)
+        // 匯出 Excel
         // ==========================================
         function exportToExcel() {
             if (currentReportData.length === 0) {
@@ -354,7 +382,6 @@
             let wb = XLSX.utils.book_new();
             let exportData = [];
 
-            // 標題區
             exportData.push(["百麒物流 - 飯店點交請款明細與彙整表"]);
             exportData.push(["結算區間:", `${startDate} ~ ${endDate}`, "", "飯店篩選:", hotel || "全部"]);
             exportData.push([]); 
@@ -365,19 +392,16 @@
             depts.forEach(dept => {
                 let deptData = currentReportData.filter(r => r.dept === dept);
 
-                // --- 寫入：部門明細 ---
                 exportData.push([`🏨 【${dept}】每日明細`]);
                 exportData.push(["點交日期", "品項名稱", "物流點交量", "請款數量", "單價", "金額", "財務備註"]);
                 
                 deptData.forEach(row => {
-                    // Excel 會自動識別為數字，不使用 formatMoney 以保留後續加總彈性
                     let rawAmount = row.qty * row.price; 
                     exportData.push([row.date, row.item, row.originalQty, row.qty, row.price, rawAmount, row.note]);
                 });
 
                 exportData.push([]); 
 
-                // --- 寫入：部門彙整 ---
                 exportData.push([`📊 【${dept}】布品彙整`]);
                 exportData.push(["品項名稱", "請款總數量", "單價", "總金額 (未稅)"]);
 
@@ -391,7 +415,13 @@
                 });
 
                 let deptSubtotalAmount = 0;
-                Object.values(summaryMap).sort((a, b) => a.item.localeCompare(b.item)).forEach(row => {
+                
+                // ★ Excel 匯出一樣強制依照基礎設定排序
+                Object.values(summaryMap).sort((a, b) => {
+                    let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
+                    let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
+                    return idxA - idxB;
+                }).forEach(row => {
                     exportData.push([row.item, row.qty, row.price, row.amount]);
                     deptSubtotalAmount += row.amount;
                 });
@@ -403,11 +433,10 @@
                 grandTotalAmount += deptSubtotalAmount;
             });
 
-            // --- 寫入：大總計 ---
             let taxAmount = Math.round(grandTotalAmount * 0.05 * 100) / 100;
             let totalWithTax = grandTotalAmount + taxAmount;
 
-            exportData.push(["💰 總結算"]);
+            exportData.push(["💰 結算大彙整"]);
             exportData.push(["", "", "各部門總計金額 (未稅)：", grandTotalAmount]);
             exportData.push(["", "", "各部門總計金額 (含稅 5%)：", totalWithTax]);
 
