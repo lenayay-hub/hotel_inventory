@@ -156,6 +156,12 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
+        // ★ 核心升級：專屬「當天日期」飯店名單
+        // 請把需要預設為「當天日期」的飯店名稱寫在這裡，用雙引號包起來，並用逗號隔開。
+        // 例如：const todayHotels = ["特定飯店A", "特殊飯店B"];
+        const todayHotels = ["H2O", "花季", "媚力泊", "捷中正", "好六", "文七", "天子閣", "喜達絲"]; 
+
+
         let masterData = []; 
         let userInputs = {}; 
         let allCategories = []; 
@@ -194,12 +200,6 @@
         }
 
         async function init() {
-            // 一打開系統，自動抓取明天的日期
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            document.getElementById('datePicker').value = getLocalDateString(tomorrow);
-            
-            updateDateDisplay();
             goHome();
             document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
             
@@ -260,7 +260,6 @@
             
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
-                // ★ 這裡改成了正方形的外觀 (aspect-square) 和更合適的文字大小
                 grid.innerHTML = filtered.map(c => `
                     <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-2xl p-2 shadow-md active:bg-blue-100 transition-colors flex items-center justify-center aspect-square">
                         <span class="text-xl font-black text-blue-900 break-words w-full text-center leading-tight">${c}</span>
@@ -274,6 +273,19 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
+            // ★ 核心升級：點擊飯店時，動態決定預設日期
+            const today = new Date();
+            if (todayHotels.includes(baseName)) {
+                // 如果這家飯店在名單裡，設為「今天」
+                document.getElementById('datePicker').value = getLocalDateString(today);
+            } else {
+                // 不在名單裡的一般飯店，設為「明天」
+                const tomorrow = new Date();
+                tomorrow.setDate(today.getDate() + 1);
+                document.getElementById('datePicker').value = getLocalDateString(tomorrow);
+            }
+            updateDateDisplay();
+
             // 預設選擇「房務」，如果沒有房務，就選該飯店的第一個部門
             let depts = hotelStructure[baseName] || [];
             currentDept = depts.includes("房務") ? "房務" : (depts[0] || "");
@@ -343,7 +355,7 @@
             const inTemplate = masterData.some(d => d.hotel === currentHotelName && d.item === newItemName);
             const inToday = userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][newItemName];
 
-            if (inTemplate || inToday) return showMessage("這個品項已經在今天的列表裡面囉！");
+            if (inTemplate || inToday) return showMessage("這個品項已經在當天的列表裡面囉！");
             
             if (!userInputs[dateStr]) userInputs[dateStr] = {};
             if (!userInputs[dateStr][currentHotelName]) userInputs[dateStr][currentHotelName] = {};
