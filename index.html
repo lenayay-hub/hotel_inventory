@@ -42,40 +42,50 @@
     </div>
 
     <div class="main-container">
-        <!-- ==================== 【首頁：飯店選擇入口】 ==================== -->
+        <!-- ==================== 【首頁：飯店選擇入口大廳】 ==================== -->
         <div id="homeView">
-            <div class="flex justify-between items-center mb-6 mt-2 px-1">
-                <h1 class="text-3xl font-black text-gray-800">選擇飯店</h1>
-                <button onclick="init()" class="bg-blue-100 text-blue-800 px-4 py-2 rounded-xl font-bold text-base shadow-sm active:bg-blue-200">
+            <div class="flex justify-between items-center mb-6 mt-4 px-1">
+                <h1 class="text-4xl font-black text-gray-800">選擇飯店</h1>
+                <button onclick="init()" class="bg-blue-100 text-blue-800 px-4 py-3 rounded-xl font-bold text-lg shadow-sm active:bg-blue-200">
                     🔄 雲端同步
                 </button>
             </div>
             
             <div class="bg-white p-5 rounded-2xl shadow-sm mb-6 flex flex-col gap-4 border border-gray-200">
                 <div class="relative w-full h-16">
-                    <span class="absolute left-4 top-4 text-gray-400 text-2xl">🔍</span>
-                    <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-xl font-bold pl-12 pr-4 outline-none" placeholder="輸入關鍵字..." oninput="renderHome()">
+                    <span class="absolute left-5 top-4 text-gray-400 text-3xl">🔍</span>
+                    <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-2xl font-bold pl-16 pr-4 outline-none" placeholder="搜尋飯店名稱..." oninput="renderHome()">
                 </div>
             </div>
 
-            <div id="hotelGrid" class="grid grid-cols-2 gap-4 pb-10">
-                <div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl animate-pulse">資料同步中...</div>
+            <!-- ★ 改為 3 排 (grid-cols-3) 的按鈕設計 -->
+            <div id="hotelGrid" class="grid grid-cols-3 gap-3 pb-10">
+                <div class="col-span-3 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">資料同步中...</div>
             </div>
         </div>
 
-        <!-- ==================== 【內頁：飯店盤點與雙層複點】 ==================== -->
+        <!-- ==================== 【內頁：飯店部門盤點】 ==================== -->
         <div id="hotelView" class="hidden">
-            <div class="flex items-center gap-3 mb-6 mt-2">
-                <button onclick="goHome()" class="bg-gray-800 text-white px-4 py-3 rounded-xl font-black text-lg shadow-md active:bg-gray-700 flex-shrink-0">
+            <div class="flex items-center gap-3 mb-4 mt-2">
+                <button onclick="goHome()" class="bg-gray-800 text-white px-5 py-3 rounded-xl font-black text-xl shadow-md active:bg-gray-700 flex-shrink-0">
                     ⬅️ 回首頁
                 </button>
-                <h1 id="currentHotelTitle" class="text-2xl font-black text-blue-900 bg-blue-100 px-4 py-3 rounded-xl flex-1 text-center truncate shadow-sm">
+                <h1 id="currentBaseHotelTitle" class="text-3xl font-black text-blue-900 flex-1 text-center truncate px-2">
                     飯店名稱
                 </h1>
             </div>
 
-            <div class="bg-white p-2 rounded-xl shadow-sm mb-5 border border-gray-200">
-                <div class="relative w-full bg-gray-50 rounded-lg h-14 flex items-center justify-center">
+            <div class="bg-white p-4 rounded-xl shadow-sm mb-5 border border-gray-200 flex flex-col gap-3">
+                <!-- 部門切換下拉選單 -->
+                <div class="relative w-full">
+                    <select id="deptSelect" onchange="changeDept(this.value)" class="w-full text-center font-black text-2xl p-4 outline-none bg-blue-100 border-2 border-blue-300 rounded-xl text-blue-900 appearance-none shadow-sm cursor-pointer">
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-4 flex items-center px-2 text-blue-900">
+                        <svg class="fill-current h-8 w-8" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+
+                <div class="relative w-full bg-gray-50 rounded-xl h-14 flex items-center justify-center border border-gray-200 mt-2">
                     <span class="absolute left-4 text-xl">📅</span>
                     <div id="dateDisplay" class="w-full text-center font-black text-xl pointer-events-none text-gray-800">載入中...</div>
                     <input type="date" id="datePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="dateChanged()">
@@ -149,7 +159,13 @@
         let masterData = []; 
         let userInputs = {}; 
         let allCategories = []; 
+        
+        let hotelStructure = {}; 
+        let allBaseHotels = [];  
+        let currentBaseHotel = ""; 
+        let currentDept = "";      
         let currentHotelName = ""; 
+
         let activeCategory = ""; 
         let activeItem = "";
         let activeRole = ""; 
@@ -185,7 +201,7 @@
             
             updateDateDisplay();
             goHome();
-            document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
+            document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
             
             try {
                 const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
@@ -204,41 +220,97 @@
                             signature: r.signature || "", doubleCount: r.doubleCount || "",
                             doubleSignature: r.doubleSignature || "", doubleHasSigned: false
                         };
-                        
-                        // ★ 核心修復：移除了之前把歷史紀錄塞進 masterData 的錯誤邏輯！
-                        // 現在 masterData 永遠只會保持「基礎設定」裡面最乾淨的原始名單！
                     });
                 }
+                
+                // 將後台的 "飯店 部門" 拆解為選單結構
                 allCategories = [...new Set(masterData.map(d => d.hotel))];
+                hotelStructure = {};
+                allBaseHotels = [];
+                
+                allCategories.forEach(cat => {
+                    let parts = cat.trim().split(/\s+/);
+                    let base, dept;
+                    if (parts.length > 1) {
+                        dept = parts.pop();
+                        base = parts.join(' ');
+                    } else {
+                        base = cat;
+                        dept = "房務"; 
+                    }
+                    
+                    if (!hotelStructure[base]) {
+                        hotelStructure[base] = [];
+                        allBaseHotels.push(base);
+                    }
+                    if (!hotelStructure[base].includes(dept)) {
+                        hotelStructure[base].push(dept);
+                    }
+                });
+
                 renderHome(); 
             } catch (error) {
-                document.getElementById('hotelGrid').innerHTML = `<div class="col-span-2 text-red-500 text-center mt-6 font-bold text-2xl">❌ 連線失敗，請重試</div>`;
+                document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-red-500 text-center mt-6 font-bold text-2xl">❌ 連線失敗，請重試</div>`;
             }
         }
 
         function renderHome() {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
-            const filtered = allCategories.filter(c => c.toLowerCase().includes(keyword));
+            const filtered = allBaseHotels.filter(c => c.toLowerCase().includes(keyword));
             
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
+                // ★ 這裡改成了正方形的外觀 (aspect-square) 和更合適的文字大小
                 grid.innerHTML = filtered.map(c => `
-                    <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-3xl p-6 shadow-md active:bg-blue-100 transition-colors flex flex-col items-center justify-center gap-2">
-                        <span class="text-xl font-black text-gray-800 break-words w-full">${c}</span>
+                    <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-2xl p-2 shadow-md active:bg-blue-100 transition-colors flex items-center justify-center aspect-square">
+                        <span class="text-xl font-black text-blue-900 break-words w-full text-center leading-tight">${c}</span>
                     </button>
                 `).join('');
             } else {
-                grid.innerHTML = `<div class="col-span-2 text-center py-10 text-gray-500 font-bold text-xl">找不到飯店</div>`;
+                grid.innerHTML = `<div class="col-span-3 text-center py-10 text-gray-500 font-bold text-2xl">找不到飯店</div>`;
             }
         }
 
-        function goToHotel(hotelName) {
-            if (!hotelName) return;
-            currentHotelName = hotelName;
+        function goToHotel(baseName) {
+            currentBaseHotel = baseName;
+            
+            // 預設選擇「房務」，如果沒有房務，就選該飯店的第一個部門
+            let depts = hotelStructure[baseName] || [];
+            currentDept = depts.includes("房務") ? "房務" : (depts[0] || "");
+            
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('hotelView').classList.remove('hidden');
-            document.getElementById('currentHotelTitle').innerText = hotelName;
+            document.getElementById('currentBaseHotelTitle').innerText = baseName;
+            
+            renderDeptDropdown();
+            updateCurrentHotelName();
             renderItems();
+        }
+
+        function renderDeptDropdown() {
+            let depts = hotelStructure[currentBaseHotel] || [];
+            let html = "";
+            depts.forEach(d => {
+                let selected = (d === currentDept) ? "selected" : "";
+                html += `<option value="${d}" ${selected}>📂 ${d}</option>`;
+            });
+            document.getElementById('deptSelect').innerHTML = html;
+        }
+
+        function changeDept(newDept) {
+            currentDept = newDept;
+            updateCurrentHotelName();
+            renderItems();
+        }
+
+        function updateCurrentHotelName() {
+            let targetCat = allCategories.find(c => {
+                let p = c.trim().split(/\s+/);
+                let d = p.length > 1 ? p.pop() : "房務";
+                let b = p.length > 0 ? p.join(' ') : c;
+                return b === currentBaseHotel && d === currentDept;
+            });
+            currentHotelName = targetCat || (currentBaseHotel + " " + currentDept);
         }
 
         function goHome() {
@@ -268,15 +340,11 @@
 
             if (!newItemName) return showMessage("請輸入要新增的品項名稱喔！");
             
-            // 檢查是否原本就在基礎設定裡
             const inTemplate = masterData.some(d => d.hotel === currentHotelName && d.item === newItemName);
-            // 檢查是否今天已經加過了
             const inToday = userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][newItemName];
 
             if (inTemplate || inToday) return showMessage("這個品項已經在今天的列表裡面囉！");
             
-            // ★ 核心修復：我們不把新品項塞進 masterData 了！
-            // 我們直接幫他在「今天」的資料庫裡建立一個空位，這樣他只會活在今天！
             if (!userInputs[dateStr]) userInputs[dateStr] = {};
             if (!userInputs[dateStr][currentHotelName]) userInputs[dateStr][currentHotelName] = {};
             
@@ -286,7 +354,7 @@
             };
 
             inputEl.value = ""; 
-            showToast("✅ 已為您新增「今日」臨時品項！");
+            showToast("✅ 已為您新增臨時品項！");
             renderItems(); 
             setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
         }
@@ -309,10 +377,8 @@
             const dateStr = document.getElementById('datePicker').value;
             if (!currentHotelName) return;
 
-            // 1. 先抓取「基礎設定」裡原汁原味的乾淨名單
             let displayItems = masterData.filter(d => d.hotel === currentHotelName).map(d => d.item);
 
-            // 2. 檢查「今天」有沒有阿姨臨時新增的東西？有的話，排在最下面
             const todayInputs = (userInputs[dateStr] && userInputs[dateStr][currentHotelName]) || {};
             for (let itemName in todayInputs) {
                 if (!displayItems.includes(itemName)) {
@@ -322,7 +388,6 @@
 
             let htmlContent = "";
 
-            // 開始畫出畫面
             displayItems.forEach(itemName => {
                 const u = todayInputs[itemName] || {};
                 const count = u.count || '';
@@ -359,7 +424,6 @@
                     supActionButton = `<button onclick="openSign('${currentHotelName}', '${itemName}', 'sup')" class="w-full py-2 bg-green-600 text-white rounded-lg font-bold shadow-md text-sm active:bg-green-700">第二步-複點簽名</button>`;
                 }
 
-                // ★ 視覺優化：如果主管已經複點簽名，整張卡片換成粉紅色底與粉色邊框
                 let cardClass = supSignedEver 
                     ? "bg-pink-100 border-2 border-pink-400 shadow-md" 
                     : "bg-white border border-gray-200 shadow-sm";
