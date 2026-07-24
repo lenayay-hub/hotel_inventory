@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>百貨物流 - 飯店收點單</title>
+    <title>百麒物流 - 飯店點收簽單</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; touch-action: manipulation; }
@@ -25,8 +25,8 @@
 </head>
 <body class="p-3 pb-32 relative">
 
-    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold">
-        ✅ 點收單已成功更新！
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-green-700 text-white px-6 py-3 rounded-full shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-[10000] font-bold text-center">
+        ✅ 點收簽單已成功更新！
     </div>
 
     <div class="main-container">
@@ -60,7 +60,7 @@
             <div class="mb-5">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold text-gray-800">1. 飯店端主管簽收</h2>
-                    <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重簽</button>
+                    <button onclick="clearCanvas(clientCtx, clientCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50 shadow-sm active:bg-red-100">清除重簽</button>
                 </div>
                 <canvas id="clientCanvas" class="sign-canvas"></canvas>
             </div>
@@ -68,14 +68,15 @@
             <div class="mb-6">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold text-gray-800">2. 百麒司機簽收</h2>
-                    <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50">清除重簽</button>
+                    <button onclick="clearCanvas(driverCtx, driverCanvas)" class="text-sm text-red-500 font-bold px-2 py-1 rounded bg-red-50 shadow-sm active:bg-red-100">清除重簽</button>
                 </div>
                 <canvas id="driverCanvas" class="sign-canvas"></canvas>
+                <div class="text-xs text-blue-600 font-bold mt-2 text-right">💡 司機簽名將自動同步至其他<span class="text-red-500">未簽名</span>的部門</div>
             </div>
 
             <div class="flex gap-3">
-                <button onclick="closeSignModal()" class="flex-1 p-4 text-lg font-bold bg-gray-200 text-gray-700 rounded-xl">取消</button>
-                <button id="submitBtn" onclick="submitVerify()" class="flex-1 p-4 text-lg font-bold bg-blue-600 text-white rounded-xl shadow-md">確認送出</button>
+                <button onclick="closeSignModal()" class="flex-1 p-4 text-lg font-bold bg-gray-200 text-gray-700 rounded-xl active:bg-gray-300">取消</button>
+                <button id="submitBtn" onclick="submitVerify()" class="flex-1 p-4 text-lg font-bold bg-blue-600 text-white rounded-xl shadow-md active:bg-blue-700">確認送出</button>
             </div>
         </div>
     </div>
@@ -133,7 +134,7 @@
                     <div class="text-center py-16 bg-red-50 rounded-2xl border-2 border-red-200">
                         <span class="text-4xl block mb-2">🚫</span>
                         <div class="text-red-600 font-black text-xl mb-2">無效的存取連結</div>
-                        <div class="text-red-500 font-bold text-sm">請向物流單位索取您所屬飯店的專屬交點網址</div>
+                        <div class="text-red-500 font-bold text-sm">請向物流單位索取您所屬飯店的專屬點交網址</div>
                     </div>`;
                 return;
             }
@@ -160,7 +161,6 @@
                 processAndRenderData(rawData);
 
             } catch(err) {
-                console.error("Init Error:", err);
                 document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路連線</div>`;
             }
         }
@@ -175,19 +175,11 @@
                 const rawData = await res.json();
                 processAndRenderData(rawData);
             } catch (err) {
-                console.error("Fetch Error:", err);
                 document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路連線</div>`;
             }
         }
 
         function processAndRenderData(rawData) {
-            // 防呆保護：避免後端發生錯誤時回傳的不是陣列，導致 forEach 崩潰
-            if (!Array.isArray(rawData)) {
-                console.error("Backend Error Data:", rawData);
-                document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">API 錯誤：無法解析點交資料<br><span class="text-sm">後端可能發生錯誤，請聯絡開發人員</span></div>`;
-                return;
-            }
-
             let uniqueDataMap = {};
             rawData.forEach(item => {
                 let key = item.deptName + "_" + item.itemName;
@@ -270,8 +262,6 @@
                                 <span class="font-bold text-2xl text-gray-400">${item.originalQty}</span>
                             </div>
                         </div>
-                        
-                        <!-- 修正了這行的致命語法錯誤 -->
                         ${item.auntNote ? `<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: ${item.auntNote}</div>` : ''}
                         
                         <div class="bg-blue-50 p-3 rounded-lg">
@@ -340,6 +330,7 @@
                 if(existDriver) { let img = new Image(); img.onload = ()=> driverCtx.drawImage(img,0,0); img.src = existDriver; }
             });
         }
+        
         function closeSignModal() { document.getElementById('signModal').classList.add('hidden'); }
 
         function submitVerify() {
@@ -349,14 +340,19 @@
             let existClient = groupedData[activeDeptKey].clientSig;
             let existDriver = groupedData[activeDeptKey].driverSig;
             
-            let cBase64 = cBlank ? (existClient || "") : clientCanvas.toDataURL('image/png');
-            let dBase64 = dBlank ? (existDriver || "") : driverCanvas.toDataURL('image/png');
+            let cBase64 = clientCanvas.isModified ? (cBlank ? "" : clientCanvas.toDataURL('image/png')) : (existClient || "");
+            let dBase64 = driverCanvas.isModified ? (dBlank ? "" : driverCanvas.toDataURL('image/png')) : (existDriver || "");
 
             if (!cBase64 && !dBase64) return alert("請至少一方完成簽名！(司機或飯店)");
 
             const btn = document.getElementById('submitBtn');
             btn.innerText = "傳送中..."; btn.disabled = true;
 
+            let isNewDriverSig = driverCanvas.isModified;
+            let payloads = [];
+            let syncDepts = [];
+
+            // 1. 打包當下點交的部門
             let safeItemsForDatabase = groupedData[activeDeptKey].items.map(item => ({
                 deptName: item.deptName,
                 itemName: item.itemName,
@@ -366,7 +362,7 @@
                 driverNote: item.driverNote
             }));
 
-            const payload = {
+            payloads.push({
                 type: 'logistics',
                 hotelKeyword: currentHotel,
                 deptName: activeDeptKey,
@@ -374,24 +370,71 @@
                 verifyJson: JSON.stringify(safeItemsForDatabase),
                 clientSigBase64: cBase64,
                 driverSigBase64: dBase64
-            };
+            });
 
-            fetch(API_URL, { 
-                method: 'POST', mode: 'no-cors',
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify(payload) 
-            })
+            // 2. 隱形智慧同步：自動尋找「尚未簽名」的其他部門並幫忙蓋章
+            if (isNewDriverSig) {
+                for (let dept in groupedData) {
+                    if (dept !== activeDeptKey) {
+                        let existOtherDriver = groupedData[dept].driverSig;
+                        
+                        // ★ 核心邏輯：只有當其他部門是「空白」時，才自動幫忙簽！
+                        // 如果該部門已經有別人簽過了，系統絕對不會去覆蓋它！
+                        if (!existOtherDriver) {
+                            let deptItemsSafe = groupedData[dept].items.map(item => ({
+                                deptName: item.deptName,
+                                itemName: item.itemName,
+                                originalQty: item.originalQty,
+                                auntNote: item.auntNote,
+                                actualQty: item.actualQty,
+                                driverNote: item.driverNote
+                            }));
+                            payloads.push({
+                                type: 'logistics',
+                                hotelKeyword: currentHotel,
+                                deptName: dept,
+                                date: currentDate,
+                                verifyJson: JSON.stringify(deptItemsSafe),
+                                clientSigBase64: groupedData[dept].clientSig || "", // 飯店端保留不覆蓋
+                                driverSigBase64: dBase64 // 套用最新簽名
+                            });
+                            syncDepts.push(dept);
+                        }
+                    }
+                }
+            }
+
+            // 3. 全數發送至後台大腦
+            Promise.all(payloads.map(payload => 
+                fetch(API_URL, { 
+                    method: 'POST', mode: 'no-cors',
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify(payload) 
+                })
+            ))
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
                 
-                if (cBase64) groupedData[activeDeptKey].clientSig = cBase64;
-                if (dBase64) groupedData[activeDeptKey].driverSig = dBase64;
+                // 更新網頁暫存
+                if (clientCanvas.isModified) groupedData[activeDeptKey].clientSig = cBase64;
+                if (driverCanvas.isModified) groupedData[activeDeptKey].driverSig = dBase64;
+                
+                // 更新有被同步到的部門畫面
+                if (isNewDriverSig && syncDepts.length > 0) {
+                    syncDepts.forEach(dept => {
+                        groupedData[dept].driverSig = dBase64;
+                    });
+                }
 
                 closeSignModal();
-                
                 renderDepartments(); 
                 
+                // 智慧提示
                 const toast = document.getElementById('toast');
+                toast.innerText = (isNewDriverSig && syncDepts.length > 0)
+                    ? `✅ 已點收，並同步簽名至 ${syncDepts.length} 個部門！` 
+                    : "✅ 點收簽單已成功更新！";
+                
                 toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
             })
             .catch(e => {
