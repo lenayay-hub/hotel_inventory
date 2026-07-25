@@ -280,7 +280,6 @@
                         if(!userInputs[r.date]) userInputs[r.date] = {};
                         if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                         
-                        // ★ 修正 0 被判斷成空值的 Bug，確實保存數字 0
                         userInputs[r.date][r.hotel][r.item] = { 
                             count: (r.count !== undefined && r.count !== null) ? String(r.count) : "",
                             note: r.note, hasSigned: false, isSubmitted: true, 
@@ -339,8 +338,10 @@
                         if (allItemsToCheck.length > 0) {
                             isOrange = allItemsToCheck.every(item => {
                                 let u = todayInputs[item];
-                                // ★ 只要有內容 (包含 0) 都能順利觸發橘燈
-                                return u && u.count !== '' && u.count !== undefined && u.count !== null;
+                                // ★ 核心修改點：必須要有數量(包含0)，且必須要有「複點簽名 (doubleSignature)」才亮橘燈
+                                return u && 
+                                       u.count !== '' && u.count !== undefined && u.count !== null &&
+                                       u.doubleSignature;
                             });
                         }
                     }
@@ -500,7 +501,6 @@
             displayItems.forEach(itemName => {
                 const u = todayInputs[itemName] || {};
                 
-                // ★ 修正 0 的顯示：強制判斷只要不是 undefiend 或空值，就算是 0 也要如實顯示！
                 const count = (u.count !== undefined && u.count !== null && u.count !== '') ? u.count : '';
                 const doubleCount = (u.doubleCount !== undefined && u.doubleCount !== null && u.doubleCount !== '') ? u.doubleCount : '';
                 
@@ -675,7 +675,6 @@
             document.getElementById('calcTitle').innerText = `${roleName}正在計算：${item}`;
             
             const u = (userInputs[dateStr] && userInputs[dateStr][hotel] && userInputs[dateStr][hotel][item]) || {};
-            // ★ 修正 0 在計算機中變空白的 Bug
             let c = (role === 'aunt') ? u.count : u.doubleCount;
             calcExpr = String((c !== undefined && c !== null && c !== '') ? c : "");
             
@@ -716,7 +715,6 @@
 
             const payload = { 
                 type: 'inventory', date: dateStr, hotel: category, item: item, 
-                // ★ 修正 0 存入後台變成空白的 Bug，確保將 0 以字串形式傳送
                 count: (u.count !== undefined && u.count !== null && u.count !== '') ? String(u.count) : '', 
                 note: u.note || '', signature: u.signature || '', 
                 doubleCount: (u.doubleCount !== undefined && u.doubleCount !== null && u.doubleCount !== '') ? String(u.doubleCount) : '', 
