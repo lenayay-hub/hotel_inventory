@@ -9,15 +9,8 @@
         body { background-color: #f8fafc; touch-action: manipulation; }
         .main-container { max-width: 500px; margin: 0 auto; }
         
-        /* 修正電腦版無法點擊日期的問題 */
         input[type="date"]::-webkit-calendar-picker-indicator { 
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            cursor: pointer;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
         }
         
         .sign-canvas { display: block; width: 100%; height: 160px; background: #fff; border: 2px dashed #cbd5e1; border-radius: 0.5rem; touch-action: none; cursor: crosshair; }
@@ -193,6 +186,11 @@
             }
 
             cleanData.forEach(item => {
+                // ★ 隱形濾網：如果出貨數量是空值，或是 0，就直接剔除，不顯示在司機的畫面上！
+                if (item.originalQty === "" || item.originalQty === "0" || item.originalQty === 0) {
+                    return; 
+                }
+
                 if (!groupedData[item.deptName]) {
                     groupedData[item.deptName] = { items: [], clientSig: "", driverSig: "" };
                 }
@@ -209,6 +207,13 @@
                     driverNote: item.driverNote
                 });
             });
+
+            // ★ 如果過濾完發現沒有任何有數量的品項，要顯示提示
+            if (Object.keys(groupedData).length === 0) {
+                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-xl">🎉 此日期所有品項數量皆為 0，無須點交！</div>';
+                return;
+            }
+
             renderDepartments();
         }
 
@@ -379,7 +384,6 @@
                         let existOtherDriver = groupedData[dept].driverSig;
                         
                         // ★ 核心邏輯：只有當其他部門是「空白」時，才自動幫忙簽！
-                        // 如果該部門已經有別人簽過了，系統絕對不會去覆蓋它！
                         if (!existOtherDriver) {
                             let deptItemsSafe = groupedData[dept].items.map(item => ({
                                 deptName: item.deptName,
@@ -407,7 +411,7 @@
             // 3. 全數發送至後台大腦
             Promise.all(payloads.map(payload => 
                 fetch(API_URL, { 
-                    method: 'POST', mode: 'no-cors',
+                    method: 'POST',
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify(payload) 
                 })
@@ -415,11 +419,9 @@
             .then(() => {
                 btn.innerText = "確認送出"; btn.disabled = false;
                 
-                // 更新網頁暫存
                 if (clientCanvas.isModified) groupedData[activeDeptKey].clientSig = cBase64;
                 if (driverCanvas.isModified) groupedData[activeDeptKey].driverSig = dBase64;
                 
-                // 更新有被同步到的部門畫面
                 if (isNewDriverSig && syncDepts.length > 0) {
                     syncDepts.forEach(dept => {
                         groupedData[dept].driverSig = dBase64;
@@ -429,7 +431,6 @@
                 closeSignModal();
                 renderDepartments(); 
                 
-                // 智慧提示
                 const toast = document.getElementById('toast');
                 toast.innerText = (isNewDriverSig && syncDepts.length > 0)
                     ? `✅ 已點收，並同步簽名至 ${syncDepts.length} 個部門！` 
