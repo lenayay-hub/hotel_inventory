@@ -260,9 +260,10 @@
             
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
+                // ★ 這裡套用了 p-1 讓邊距變小，text-3xl 讓字體放大，並加上極致的 font-black 和 text-shadow 加粗效果
                 grid.innerHTML = filtered.map(c => `
-                    <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-2xl p-2 shadow-md active:bg-blue-100 transition-colors flex items-center justify-center aspect-square">
-                        <span class="text-xl font-black text-blue-900 break-words w-full text-center leading-tight">${c}</span>
+                    <button onclick="goToHotel('${c}')" class="bg-white border-2 border-blue-200 rounded-2xl p-1 shadow-md active:bg-blue-100 transition-colors flex items-center justify-center aspect-square">
+                        <span class="text-3xl font-black text-blue-900 break-words w-full text-center leading-tight tracking-wide" style="font-weight: 900; text-shadow: 0.5px 0.5px 0px rgba(30,58,138,0.3);">${c}</span>
                     </button>
                 `).join('');
             } else {
