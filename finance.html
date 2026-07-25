@@ -7,19 +7,40 @@
     <!-- 引入 Excel 匯出套件 -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
-        /* 最純粹的 Excel 表格風格 */
-        body { font-family: 'Arial', sans-serif; background-color: #f8fafc; color: #000; padding: 20px; font-size: 14px; }
-        .filter-section { border: 1px solid #aaa; padding: 15px; margin-bottom: 20px; background-color: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;}
-        .filter-item { display: inline-block; margin-right: 20px; margin-bottom: 10px; }
-        .filter-item label { font-weight: bold; margin-right: 5px; color: #333; }
-        .filter-item input { padding: 6px 10px; border: 1px solid #ccc; font-size: 14px; border-radius: 4px; }
+        /* 專業 Excel 風格 */
+        body { font-family: 'Arial', sans-serif; background-color: #f4f6f8; color: #000; padding: 20px; font-size: 14px; }
         
-        button { padding: 8px 16px; border: 1px solid #555; background-color: #e0e0e0; cursor: pointer; font-weight: bold; margin-right: 10px; border-radius: 4px; transition: 0.2s;}
+        /* 頂部控制面板設計 */
+        .control-panel { border: 1px solid #aaa; padding: 20px; margin-bottom: 25px; background-color: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;}
+        .panel-title { margin-top: 0; color: #1f2937; font-size: 24px; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-bottom: 20px; }
+        
+        .flex-row { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .date-input { padding: 6px 10px; border: 1px solid #ccc; font-size: 15px; border-radius: 4px; font-weight: bold; }
+        
+        button { padding: 8px 16px; border: 1px solid #555; background-color: #e0e0e0; cursor: pointer; font-weight: bold; border-radius: 6px; transition: 0.2s;}
         button:hover { background-color: #ccc; }
-        .btn-excel { background-color: #107c41; color: white; border-color: #0b5e31; }
+        .btn-25 { background-color: #f59e0b; color: white; border-color: #d97706; }
+        .btn-25:hover { background-color: #d97706; }
+        .btn-end { background-color: #8b5cf6; color: white; border-color: #7c3aed; }
+        .btn-end:hover { background-color: #7c3aed; }
+        .btn-select-all { background-color: #3b82f6; color: white; border-color: #2563eb; }
+        .btn-select-all:hover { background-color: #2563eb; }
+        
+        .btn-excel { background-color: #107c41; color: white; border-color: #0b5e31; font-size: 16px; padding: 10px 20px;}
         .btn-excel:hover { background-color: #0c6132; }
-        .btn-load { background-color: #2563eb; color: white; border-color: #1e40af; }
-        .btn-load:hover { background-color: #1d4ed8; }
+        .btn-load { background-color: #1e3a8a; color: white; border-color: #1e3a8a; font-size: 16px; padding: 10px 20px;}
+        .btn-load:hover { background-color: #1e40af; }
+
+        /* 核取方塊清單設計 */
+        .search-box { padding: 8px 12px; border: 2px solid #3b82f6; font-size: 15px; border-radius: 6px; width: 250px; outline: none; }
+        .search-box:focus { border-color: #1e40af; }
+        .checkbox-container { 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; 
+            margin-top: 15px; max-height: 250px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background: #f9f9f9; border-radius: 6px;
+        }
+        .cb-label { display: inline-flex; align-items: center; background: #fff; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; user-select: none; font-weight: bold; color: #444;}
+        .cb-label:hover { background: #eef2ff; border-color: #93c5fd; }
+        .cb-label input { margin-right: 8px; transform: scale(1.3); cursor: pointer;}
         
         /* 區塊標題設計 */
         .dept-title { font-size: 20px; font-weight: 900; margin-top: 40px; margin-bottom: 10px; color: #1e3a8a; border-bottom: 3px solid #1e3a8a; padding-bottom: 5px; }
@@ -29,7 +50,7 @@
         .excel-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #fff; }
         .excel-table th, .excel-table td { border: 1px solid #000; padding: 8px 10px; text-align: left; vertical-align: middle; }
         .excel-table th { background-color: #e2efda; font-weight: bold; text-align: center; } 
-        .summary-table th { background-color: #fff2cc; } /* 彙整表的表頭換色以做區分 */
+        .summary-table th { background-color: #fff2cc; } 
         
         /* 欄寬設定 */
         .col-date { width: 100px; text-align: center; }
@@ -45,12 +66,10 @@
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
         
-        /* 輸入框設計：讓財務清楚知道哪裡可以改 */
         .edit-input { width: 100%; border: 2px solid #90caf9; padding: 6px; box-sizing: border-box; background-color: #e3f2fd; font-weight: bold; font-family: inherit; font-size: 15px;}
         .edit-input:focus { outline: none; border-color: #1976d2; background-color: #fff; }
         .qty-input { text-align: right; }
 
-        /* 彙整表與總計專屬樣式 */
         .subtotal-row td { font-weight: bold; background-color: #fce4d6; font-size: 15px;}
         .grand-total-section { margin-top: 50px; border: 3px double #000; background-color: #fff; padding: 20px;}
         .grand-total-row td { font-weight: 900; background-color: #ffffcc; font-size: 18px;} 
@@ -71,7 +90,6 @@
             .grand-total-row td { background-color: #ffffcc !important; -webkit-print-color-adjust: exact; }
             .tax-row td { background-color: #ddebf7 !important; -webkit-print-color-adjust: exact; }
             
-            /* 列印時將輸入框化為無形文字 */
             .edit-input { border: none !important; background: transparent !important; padding: 0 !important; }
             .edit-input::-webkit-outer-spin-button, .edit-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
             .edit-input[type=number] { -moz-appearance: textfield; }
@@ -80,26 +98,39 @@
 </head>
 <body>
 
-    <div class="no-print filter-section">
-        <h2 style="margin-top: 0; color: #1f2937;">百麒物流 💼 財務結帳查詢</h2>
+    <div class="no-print control-panel">
+        <h2 class="panel-title">百麒物流 💼 財務多維結帳系統</h2>
         
-        <div class="filter-item">
-            <label>起始日期：</label>
-            <input type="date" id="startDatePicker">
+        <div class="flex-row">
+            <span style="font-weight: bold; font-size: 16px;">結帳區間設定：</span>
+            <label>起始：</label><input type="date" id="startDatePicker" class="date-input">
+            <label>結束：</label><input type="date" id="endDatePicker" class="date-input">
         </div>
-        <div class="filter-item">
-            <label>結束日期：</label>
-            <input type="date" id="endDatePicker">
-        </div>
-        <div class="filter-item">
-            <label>搜尋飯店 / 部門：</label>
-            <input type="text" id="hotelSearch" placeholder="例如：H2O">
+        
+        <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+            <div class="flex-row" style="background: #fdf6e3; padding: 10px; border-radius: 8px;">
+                <label style="font-size: 16px; font-weight: bold; color: #b45309;">1. 快速載入群組名單：</label>
+                <button class="btn-25" onclick="checkGroup('25')">☑️ 一鍵全選 25號結帳飯店</button>
+                <button class="btn-end" onclick="checkGroup('end')">☑️ 一鍵全選 月底結帳飯店</button>
+                <button onclick="clearChecks()">🔲 清空所有勾選</button>
+            </div>
+            
+            <div class="flex-row" style="background: #eff6ff; padding: 10px; border-radius: 8px; margin-top: 10px;">
+                <label style="font-size: 16px; font-weight: bold; color: #1d4ed8;">2. 關鍵字過濾 (自訂選單)：</label>
+                <input type="text" id="cbSearch" class="search-box" oninput="filterCheckboxes()" placeholder="例如打『文』或『文旅』...">
+                <button class="btn-select-all" onclick="selectAllVisible()">☑️ 全選下方目前顯示的飯店</button>
+            </div>
         </div>
 
-        <br>
-        <button class="btn-load" onclick="fetchData()">載入報表</button>
-        <button class="btn-excel" onclick="exportToExcel()">📊 匯出 Excel</button>
-        <button onclick="window.print()">🖨️ 列印 / 匯出 PDF</button>
+        <div id="checkboxContainer" class="checkbox-container">
+            <span style="color: #2563eb; font-weight: bold; font-size: 16px;">🔄 正在從後台同步最新飯店名單...</span>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 2px solid #1f2937; padding-top: 15px;">
+            <button class="btn-load" onclick="fetchData()">⬇️ 載入報表 (計算勾選的名單)</button>
+            <button class="btn-excel" onclick="exportToExcel()">📊 匯出 Excel</button>
+            <button onclick="window.print()" style="font-size: 16px; padding: 10px 20px;">🖨️ 列印 / 匯出 PDF</button>
+        </div>
     </div>
 
     <div id="printHeader" style="text-align: center; margin-bottom: 15px;">
@@ -108,61 +139,151 @@
     </div>
 
     <div id="resultsContainer">
-        <div class="msg-box no-print text-gray-500">請設定條件並點擊「載入報表」按鈕</div>
+        <div class="msg-box no-print text-gray-500">請設定區間、勾選上方飯店後，點擊「載入報表」按鈕</div>
     </div>
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
-        let currentReportData = [];
-        let globalItemOrder = {}; // ★ 新增：儲存從基礎設定抓來的「品項絕對順序」
+        // ==========================================
+        // 🏨 內建專屬的兩大結帳群組名單
+        // ==========================================
+        // 💡 如果未來有新增，只要照著格式打字加在陣列裡面就可以了！
+        const group25 = [
+            "良一", "良西", "良站前", "英迪格", "富野", "富汽", "富野制服",
+            "然一-房務", "然一-餐廳", "H2O-行政", "H2O-房務", "H2O-西餐", "H2O-中餐",
+            "花季-C館", "花季-A館", "花季-裸湯", "花季-餐廳", "花季-制服", "H2O-客衣",
+            "洲際-房務", "天子閣", "洲際-餐廳", "驛館-房務", "承億", "承億餐廳", "承億休閒",
+            "承億制服", "驛館-法餐", "承億健身房", "承億25F日料", "然一-制服", "然一-客衣",
+            "萊特薇庭", "驛館-餐酒館", "帕鉑", "承億27F BAR KAO", "承億22F仕女樓",
+            "候工所", "然一-護膚", "承億B1F中餐廳", "驛館-制服", "驛館-客衣"
+        ];
 
-        // 金額格式化函數 (強制顯示小數點後兩位)
+        const groupEnd = [
+            "捷站前", "捷中正", "歐遊", "鈞怡", "宮賞", "家和", "秝二", "秝芯", "比歐",
+            "駱駝", "喜達絲", "泊思行旅", "癮室", "媚力泊", "巨蛋", "老新", "永心",
+            "雅樂", "福客來", "林森", "建工", "鴨點棧", "高廬", "頭等艙", "河畔",
+            "好地方", "好地方-六合館", "文旅", "文旅-七賢館", "文旅-一心館", "禾鮨",
+            "日航", "日航-休閒中心", "日航-餐廳", "日航-制服", "鼎王-富國店",
+            "鼎王-七賢店", "無老鍋", "禾寓", "雅樂十刻"
+        ];
+
+        let currentReportData = [];
+        let globalItemOrder = {}; 
+
         function formatMoney(num) {
             return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        window.onload = function() {
+        window.onload = async function() {
             const today = new Date();
             const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
             
             document.getElementById('startDatePicker').value = firstDay.toISOString().split('T')[0];
             document.getElementById('endDatePicker').value = today.toISOString().split('T')[0];
             document.getElementById('printHeader').style.display = 'none'; 
+            
+            // 一開網頁就自動去後台拿所有部門名單，畫成勾選框
+            await loadTemplateCheckboxes();
         };
 
-        document.getElementById('hotelSearch').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') fetchData();
-        });
-
-        async function fetchData() {
-            const startDate = document.getElementById('startDatePicker').value;
-            const endDate = document.getElementById('endDatePicker').value;
-            const hotel = document.getElementById('hotelSearch').value.trim();
-            const container = document.getElementById('resultsContainer');
-            
-            document.getElementById('printHeader').style.display = 'block';
-            document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate} ${hotel ? ' | 篩選：' + hotel : ''}`;
-            container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 資料讀取與計算中... 請稍候</div>`;
-            
+        async function loadTemplateCheckboxes() {
+            const container = document.getElementById('checkboxContainer');
             try {
-                // ★ 雙管齊下：同時去後台抓「財務明細」與「基礎設定(為了排順序)」
-                const tempResPromise = fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`).then(res => res.json());
-                const financeResPromise = fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${hotel}&t=${new Date().getTime()}`).then(res => res.json());
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                const data = await res.json();
+                let template = data.template || [];
 
-                const [tempData, data] = await Promise.all([tempResPromise, financeResPromise]);
-                
-                // ★ 建立強制排序字典：記下每一個品項應該排在第幾個位置
-                let template = tempData.template || [];
                 globalItemOrder = {};
+                let uniqueHotels = new Set();
+
                 template.forEach((t, idx) => {
                     if (globalItemOrder[t.item] === undefined) {
                         globalItemOrder[t.item] = idx;
                     }
+                    uniqueHotels.add(t.hotel); // 例如 "H2O 房務"
                 });
 
+                let html = "";
+                Array.from(uniqueHotels).sort().forEach(h => {
+                    html += `<label class="cb-label"><input type="checkbox" class="hotel-cb" value="${h}"> ${h}</label>`;
+                });
+                container.innerHTML = html;
+            } catch(e) {
+                container.innerHTML = "<span style='color:red;'>無法載入飯店清單，請檢查網路連線</span>";
+            }
+        }
+
+        // --- 核取方塊操作邏輯 ---
+        function filterCheckboxes() {
+            const keyword = document.getElementById('cbSearch').value.toLowerCase().replace(/\s+/g, '');
+            const labels = document.querySelectorAll('.cb-label');
+            labels.forEach(label => {
+                const val = label.innerText.toLowerCase().replace(/\s+/g, '');
+                if (val.includes(keyword)) {
+                    label.style.display = 'inline-flex';
+                } else {
+                    label.style.display = 'none';
+                }
+            });
+        }
+
+        function clearChecks() {
+            document.querySelectorAll('.hotel-cb').forEach(cb => cb.checked = false);
+            document.getElementById('cbSearch').value = '';
+            filterCheckboxes();
+        }
+
+        function selectAllVisible() {
+            document.querySelectorAll('.cb-label').forEach(label => {
+                if (label.style.display !== 'none') {
+                    label.querySelector('.hotel-cb').checked = true;
+                }
+            });
+        }
+
+        function checkGroup(type) {
+            clearChecks(); // 先清空，避免名單混雜
+            const listToMatch = type === '25' ? group25 : groupEnd;
+            const cbs = document.querySelectorAll('.hotel-cb');
+
+            cbs.forEach(cb => {
+                // 將後台傳來的 "H2O 房務" 正規化為 "H2O房務"
+                let val = cb.value.replace(/\s+/g, '').replace(/-/g, '');
+                
+                let shouldCheck = listToMatch.some(item => {
+                    let normalizedItem = item.replace(/\s+/g, '').replace(/-/g, '');
+                    // 只要飯店名字包含關鍵字，或是關鍵字包含飯店名字，就自動打勾
+                    return val === normalizedItem || val.includes(normalizedItem);
+                });
+                if (shouldCheck) cb.checked = true;
+            });
+        }
+        // -------------------------
+
+        async function fetchData() {
+            const startDate = document.getElementById('startDatePicker').value;
+            const endDate = document.getElementById('endDatePicker').value;
+            
+            // 抓出所有有打勾的飯店，組成逗號分隔字串給大腦
+            const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value).join(',');
+            
+            if (selectedHotels === "") {
+                if(!confirm("⚠️ 您尚未勾選任何飯店！\n\n按下「確定」將載入【全部】飯店資料（如果單量很多，這可能需要幾十秒的時間）。\n按下「取消」返回先勾選飯店。")) return;
+            }
+
+            const container = document.getElementById('resultsContainer');
+            
+            document.getElementById('printHeader').style.display = 'block';
+            document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate}`;
+            container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 正在跨部門抓取資料與計算中... 請稍候</div>`;
+            
+            try {
+                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels)}&t=${new Date().getTime()}`);
+                const data = await res.json();
+
                 if(!data.records || data.records.length === 0) {
-                    container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已簽收的點交紀錄。</div>`;
+                    container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已雙方簽收的點交紀錄。</div>`;
                     return;
                 }
                 
@@ -179,7 +300,6 @@
                 let items = [];
                 try { items = JSON.parse(record.verifyJson); } catch(e) { return; }
                 
-                // 必須是雙方簽收的單據才列入請款
                 if (!record.clientSig || !record.driverSig) return;
 
                 let dateStr = record.date || "";
@@ -209,23 +329,18 @@
                 return;
             }
 
-            // ★ 核心修復：強制依照基礎設定排序！不再用筆畫排了！
             currentReportData.sort((a, b) => {
-                // 1. 先照部門排
                 let deptCmp = a.dept.localeCompare(b.dept);
                 if (deptCmp !== 0) return deptCmp;
 
-                // 2. 再照日期排
                 let dateCmp = a.date.localeCompare(b.date);
                 if (dateCmp !== 0) return dateCmp;
 
-                // 3. 最後嚴格照「基礎設定」的順序排
                 let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
                 let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
                 return idxA - idxB;
             });
             
-            // 給每個物件一個唯一的全域 Index，用來對應修改框
             currentReportData.forEach((row, idx) => { row.globalIndex = idx; });
 
             renderReport();
@@ -249,7 +364,6 @@
             depts.forEach(dept => {
                 let deptData = currentReportData.filter(r => r.dept === dept);
 
-                // --- 區塊 A：部門每日明細 ---
                 html += `<div class="dept-title">🏨 【${dept}】每日明細</div>`;
                 html += `
                     <table class="excel-table">
@@ -287,7 +401,6 @@
                 });
                 html += `</tbody></table>`;
 
-                // --- 區塊 B：部門布品彙整與小計 ---
                 html += `<div class="summary-title">【${dept}】布品彙整</div>`;
                 html += `
                     <table class="excel-table summary-table" style="width: 70%; margin-left: 0;">
@@ -313,7 +426,6 @@
 
                 let deptSubtotalAmount = 0;
                 
-                // ★ 彙整表一樣強制依照基礎設定排序
                 Object.values(summaryMap).sort((a, b) => {
                     let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
                     let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
@@ -343,7 +455,6 @@
                 `;
             });
 
-            // 大總計
             let taxAmount = grandTotalAmount * 0.05;
             let totalWithTax = grandTotalAmount + taxAmount;
 
@@ -366,9 +477,6 @@
             document.getElementById('resultsContainer').innerHTML = html;
         }
 
-        // ==========================================
-        // 匯出 Excel
-        // ==========================================
         function exportToExcel() {
             if (currentReportData.length === 0) {
                 alert("請先載入報表再匯出！");
@@ -377,13 +485,12 @@
 
             const startDate = document.getElementById('startDatePicker').value;
             const endDate = document.getElementById('endDatePicker').value;
-            const hotel = document.getElementById('hotelSearch').value.trim();
 
             let wb = XLSX.utils.book_new();
             let exportData = [];
 
             exportData.push(["百麒物流 - 飯店點交請款明細與彙整表"]);
-            exportData.push(["結算區間:", `${startDate} ~ ${endDate}`, "", "飯店篩選:", hotel || "全部"]);
+            exportData.push(["結算區間:", `${startDate} ~ ${endDate}`]);
             exportData.push([]); 
 
             let depts = [...new Set(currentReportData.map(r => r.dept))];
@@ -416,7 +523,6 @@
 
                 let deptSubtotalAmount = 0;
                 
-                // ★ Excel 匯出一樣強制依照基礎設定排序
                 Object.values(summaryMap).sort((a, b) => {
                     let idxA = globalItemOrder[a.item] !== undefined ? globalItemOrder[a.item] : 9999;
                     let idxB = globalItemOrder[b.item] !== undefined ? globalItemOrder[b.item] : 9999;
