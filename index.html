@@ -43,6 +43,14 @@
                 </button>
             </div>
             
+            <div class="bg-white p-3 rounded-2xl shadow-sm mb-4 border border-gray-200 flex items-center justify-between">
+                <div class="font-bold text-gray-700 text-base">🚦 儀表板燈號日期：</div>
+                <div class="relative w-36 bg-orange-50 rounded-lg h-10 flex items-center justify-center border border-orange-200">
+                    <div id="homeDateDisplay" class="w-full text-center font-bold text-orange-900 pointer-events-none">載入中...</div>
+                    <input type="date" id="homeDatePicker" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="homeDateChanged()">
+                </div>
+            </div>
+
             <div class="bg-white p-5 rounded-2xl shadow-sm mb-6 flex flex-col gap-4 border border-gray-200">
                 <div class="relative w-full h-16">
                     <span class="absolute left-5 top-4 text-gray-400 text-3xl">🔍</span>
@@ -84,17 +92,28 @@
 
             <div id="itemsList" class="space-y-4"></div>
 
+            <!-- ★ 手工打造的「絕對可見」智慧下拉選單 -->
             <div class="mt-8 bg-blue-50 p-5 rounded-2xl shadow-sm border-2 border-dashed border-blue-300">
                 <h2 class="text-xl font-black mb-3 text-blue-800">➕ 找不到品項？今日臨時新增</h2>
                 <div class="flex gap-2 relative">
-                    <input id="newItemInput" list="frequentItems" class="flex-1 p-4 text-xl font-bold border-2 border-blue-200 rounded-xl outline-none focus:border-blue-500 bg-white" placeholder="點選箭頭或輸入...">
-                    <datalist id="frequentItems">
-                        <option value="床墊"></option>
-                        <option value="枕頭"></option>
-                        <option value="床包"></option>
-                        <option value="羽毛被"></option>
-                        <option value="置物墊"></option>
-                    </datalist>
+                    <div class="relative flex-1">
+                        <input id="newItemInput" class="w-full h-full p-4 text-xl font-bold border-2 border-blue-200 rounded-xl outline-none focus:border-blue-500 bg-white pr-14" placeholder="打字或點箭頭 👉">
+                        
+                        <!-- 絕對顯示的下拉按鈕 -->
+                        <button id="dropdownBtn" onclick="toggleDropdown(event)" class="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-blue-100 text-blue-800 rounded-lg font-bold shadow-sm border border-blue-300 active:bg-blue-200 flex items-center justify-center h-10 w-10">
+                            <svg class="w-6 h-6 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                        </button>
+
+                        <!-- 手工打造的巨型清單面板 -->
+                        <div id="customDropdownMenu" class="hidden absolute z-[30000] w-full mt-2 bg-white border-2 border-blue-300 rounded-xl shadow-2xl overflow-hidden">
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('床墊')">床墊</div>
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('枕頭')">枕頭</div>
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('床包')">床包</div>
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('羽毛被')">羽毛被</div>
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('置物墊')">置物墊</div>
+                        </div>
+                    </div>
+                    
                     <button onclick="addNewItem()" class="p-4 bg-green-600 text-white rounded-xl font-black text-xl shadow-md active:bg-green-700 whitespace-nowrap">新增</button>
                 </div>
             </div>
@@ -162,6 +181,7 @@
         let currentDept = "";      
         let currentHotelName = ""; 
 
+        let hotelDateMemory = {};
         let activeCategory = ""; 
         let activeItem = "";
         let activeRole = ""; 
@@ -170,6 +190,31 @@
         const ctx = canvas.getContext('2d');
         let painting = false;
         let calcExpr = "";
+
+        // ★ 手工選單的操控邏輯
+        function toggleDropdown(e) {
+            e.stopPropagation(); // 阻止事件冒泡
+            const menu = document.getElementById('customDropdownMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        function selectOption(val) {
+            document.getElementById('newItemInput').value = val;
+            document.getElementById('customDropdownMenu').classList.add('hidden');
+        }
+
+        // 點擊畫面其他地方時，自動把選單收起來
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('customDropdownMenu');
+            const btn = document.getElementById('dropdownBtn');
+            const input = document.getElementById('newItemInput');
+            
+            if (menu && !menu.classList.contains('hidden')) {
+                if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target) && e.target !== input) {
+                    menu.classList.add('hidden');
+                }
+            }
+        });
 
         function showMessage(text, isError = true) {
             document.getElementById('msgText').innerText = text;
@@ -199,12 +244,18 @@
             }
         }
 
+        function homeDateChanged() {
+            const d = new Date(document.getElementById('homeDatePicker').value);
+            document.getElementById('homeDateDisplay').innerText = `${d.getMonth() + 1}月${d.getDate()}日`;
+            renderHome(); 
+        }
+
         async function init() {
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
-            document.getElementById('datePicker').value = getLocalDateString(tomorrow);
+            document.getElementById('homeDatePicker').value = getLocalDateString(tomorrow);
             
-            updateDateDisplay();
+            homeDateChanged();
             goHome();
             document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">🔄 資料同步中...</div>`;
             
@@ -224,7 +275,7 @@
                             count: r.count, note: r.note, hasSigned: false, isSubmitted: true, 
                             signature: r.signature || "", doubleCount: r.doubleCount || "",
                             doubleSignature: r.doubleSignature || "", doubleHasSigned: false,
-                            isSaving: false, saveError: false // 新增狀態追蹤
+                            isSaving: false, saveError: false
                         };
                     });
                 }
@@ -251,7 +302,6 @@
             }
         }
 
-        // ★ 首頁渲染：橘色燈號完工判斷
         function renderHome() {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allBaseHotels.filter(c => c.toLowerCase().includes(keyword));
@@ -260,7 +310,7 @@
             if (filtered.length > 0) {
                 grid.innerHTML = filtered.map(c => {
                     let isOrange = false;
-                    const targetDate = getTargetDateStr(c);
+                    const targetDate = document.getElementById('homeDatePicker').value;
                     
                     let targetCat = masterData.find(d => d.baseName === c && d.deptName === "房務");
                     let fullHotelName = targetCat ? targetCat.hotel : (c + " 房務");
@@ -304,13 +354,10 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
-            const today = new Date();
-            if (todayHotels.includes(baseName)) {
-                document.getElementById('datePicker').value = getLocalDateString(today);
+            if (hotelDateMemory[baseName]) {
+                document.getElementById('datePicker').value = hotelDateMemory[baseName];
             } else {
-                const tomorrow = new Date();
-                tomorrow.setDate(today.getDate() + 1);
-                document.getElementById('datePicker').value = getLocalDateString(tomorrow);
+                document.getElementById('datePicker').value = getTargetDateStr(baseName);
             }
             updateDateDisplay();
 
@@ -358,7 +405,14 @@
             renderHome(); 
         }
 
-        function dateChanged() { updateDateDisplay(); if(currentHotelName) renderItems(); }
+        function dateChanged() { 
+            if (currentBaseHotel) {
+                hotelDateMemory[currentBaseHotel] = document.getElementById('datePicker').value;
+            }
+            updateDateDisplay(); 
+            if(currentHotelName) renderItems(); 
+        }
+        
         function updateDateDisplay() {
             const d = new Date(document.getElementById('datePicker').value);
             document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
@@ -402,7 +456,7 @@
             const dateStr = document.getElementById('datePicker').value;
             const u = (userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][item]) || {};
             
-            if (u.isSaving) return; // 儲存中鎖定點擊
+            if (u.isSaving) return; 
 
             if (role === 'aunt') {
                 if (u.doubleSignature) return showMessage("🔒 複點人員已簽名！\n現場數量已被完全鎖定，無法修改囉！");
@@ -445,7 +499,6 @@
                 let auntText = count !== "" ? count : (hasSigned ? "輸入數量" : "🔒");
                 let auntActionButton = "";
 
-                // ★ 真實驗證：新增了寫入失敗和儲存中的 UI 回饋
                 if (isSaving) {
                     auntActionButton = `<div class="w-full py-2 bg-gray-200 text-gray-500 rounded-lg font-bold text-sm text-center border border-gray-300 shadow-inner">${loadingSvg} 寫入中...</div>`;
                 } else if (supSignedEver) {
@@ -584,7 +637,7 @@
             if (isBlank) return showMessage("請先在空白處簽名喔！");
 
             let sigBase64 = canvas.toDataURL('image/png');
-            const dateStr = document.getElementById('datePicker').value;
+            const dateStr = document.getElementById('datePicker').value; 
             
             if (activeRole === 'aunt') {
                 handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64);
@@ -595,7 +648,7 @@
             }
             
             handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); 
-            handleInput(dateStr, activeCategory, activeItem, 'saveError', false); // 清除錯誤狀態
+            handleInput(dateStr, activeCategory, activeItem, 'saveError', false);
             closeSign(); renderItems(); openCalc(activeCategory, activeItem, activeRole); 
         }
 
@@ -650,12 +703,10 @@
                 timestamp: new Date().toLocaleString() 
             };
             
-            // ★ 真實驗證：先鎖定 UI 為「儲存中」，並清空錯誤
             handleInput(dateStr, category, item, 'isSaving', true);
             handleInput(dateStr, category, item, 'saveError', false);
             renderItems();
 
-            // 改用標準請求，以便抓取真實的成功/失敗狀態
             fetch(API_URL, { 
                 method: 'POST',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -665,7 +716,6 @@
             .then(data => {
                 if (data.status !== "success") throw new Error("伺服器端錯誤");
                 
-                // 只有確定存進 Google，才解鎖並顯示成功
                 handleInput(dateStr, category, item, 'isSaving', false);
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
                 handleInput(dateStr, category, item, 'hasSigned', false); 
@@ -674,7 +724,6 @@
                 showToast("✅ 數量已寫入雲端！");
             })
             .catch(e => {
-                // ★ 寫入失敗時，保留阿姨輸入的數字和簽名，亮紅燈請她重試！
                 handleInput(dateStr, category, item, 'isSaving', false);
                 handleInput(dateStr, category, item, 'saveError', true);
                 renderItems();
@@ -686,3 +735,4 @@
     </script>
 </body>
 </html>
+```
