@@ -104,8 +104,8 @@
                             <svg class="w-6 h-6 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
                         </button>
 
-                        <!-- 手工打造的巨型清單面板 -->
-                        <div id="customDropdownMenu" class="hidden absolute z-[30000] w-full mt-2 bg-white border-2 border-blue-300 rounded-xl shadow-2xl overflow-hidden">
+                        <!-- 手工打造的巨型清單面板 (加入 max-h 確保選項太多時可以內部滑動) -->
+                        <div id="customDropdownMenu" class="hidden absolute z-[30000] w-full mt-2 max-h-64 overflow-y-auto bg-white border-2 border-blue-300 rounded-xl shadow-2xl">
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('方巾')">方巾</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('床墊')">床墊</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('枕頭')">枕頭</div>
@@ -113,7 +113,7 @@
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('羽毛被')">羽毛被</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('抱枕套')">抱枕套</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('置物墊')">置物墊</div>
-                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('嬰兒頭圍')">嬰兒床圍組</div>
+                            <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('嬰兒床圍組')">嬰兒床圍組</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('嬰兒床包/裙')">嬰兒床包/裙</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('嬰兒被套')">嬰兒被套</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('嬰兒枕套')">嬰兒枕套</div>
@@ -193,7 +193,6 @@
         let currentDept = "";      
         let currentHotelName = ""; 
 
-        let hotelDateMemory = {};
         let activeCategory = ""; 
         let activeItem = "";
         let activeRole = ""; 
@@ -339,7 +338,6 @@
                         if (allItemsToCheck.length > 0) {
                             isOrange = allItemsToCheck.every(item => {
                                 let u = todayInputs[item];
-                                // ★ 核心修改點：容許阿姨的數量是空白，只要有「複點簽名 (doubleSignature)」就亮橘燈！
                                 return u && u.doubleSignature;
                             });
                         }
@@ -367,11 +365,8 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
-            if (hotelDateMemory[baseName]) {
-                document.getElementById('datePicker').value = hotelDateMemory[baseName];
-            } else {
-                document.getElementById('datePicker').value = getTargetDateStr(baseName);
-            }
+            // 強制鎖死回到「預設日期規則」，不記憶上次手動改的日期
+            document.getElementById('datePicker').value = getTargetDateStr(baseName);
             updateDateDisplay();
 
             let depts = hotelStructure[baseName] || [];
@@ -419,9 +414,6 @@
         }
 
         function dateChanged() { 
-            if (currentBaseHotel) {
-                hotelDateMemory[currentBaseHotel] = document.getElementById('datePicker').value;
-            }
             updateDateDisplay(); 
             if(currentHotelName) renderItems(); 
         }
