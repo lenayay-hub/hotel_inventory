@@ -104,7 +104,7 @@
                             <svg class="w-6 h-6 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
                         </button>
 
-                        <!-- 手工打造的巨型清單面板 (加入 max-h 確保選項太多時可以內部滑動) -->
+                        <!-- 手工打造的巨型清單面板 -->
                         <div id="customDropdownMenu" class="hidden absolute z-[30000] w-full mt-2 max-h-64 overflow-y-auto bg-white border-2 border-blue-300 rounded-xl shadow-2xl">
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('方巾')">方巾</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('床墊')">床墊</div>
@@ -202,6 +202,13 @@
         let painting = false;
         let calcExpr = "";
 
+        // 建立標準格式的本地時間戳記 (YYYY/MM/DD HH:mm:ss) 確保各種瀏覽器都能安全解析
+        function getLocalTimestamp() {
+            const d = new Date();
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+
         function toggleDropdown(e) {
             e.stopPropagation();
             const menu = document.getElementById('customDropdownMenu');
@@ -286,6 +293,7 @@
                             signature: r.signature || "", 
                             doubleCount: (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "",
                             doubleSignature: r.doubleSignature || "", doubleHasSigned: false,
+                            timestamp: r.timestamp || "", // ⭐ 記錄來自資料庫的時間戳記
                             isSaving: false, saveError: false
                         };
                     });
@@ -313,6 +321,58 @@
             }
         }
 
+        // ★ 核心新功能：檢查某家飯店是否在「指定的實際操作日 (targetDateStr)」全部完成
+        function checkHotelCompletedOnDate(hotelName, targetDateStr) {
+            let isCompleted = false;
+
+            // 遍歷該飯店在所有單據日期 (docDate) 裡的紀錄
+            for (let docDate in userInputs) {
+                const hotelData = userInputs[docDate][hotelName];
+                if (!hotelData) continue;
+
+                // 抓取該飯店需要檢查的品項 (枕套之後的 + 自行新增的)
+                let templateItems = masterData.filter(d => d.hotel === hotelName).map(d => d.item);
+                let pillowIdx = templateItems.indexOf("枕套");
+                let targetItems = pillowIdx !== -1 ? templateItems.slice(pillowIdx + 1) : [];
+
+                const customItems = Object.keys(hotelData).filter(item => !templateItems.includes(item));
+                let allItemsToCheck = targetItems.concat(customItems);
+
+                if (allItemsToCheck.length > 0) {
+                    let allSigned = true;
+                    let latestTimestamp = 0;
+
+                    for (let item of allItemsToCheck) {
+                        let u = hotelData[item];
+                        // 必須每一項都有複點簽名才算完成
+                        if (!u || !u.doubleSignature) {
+                            allSigned = false;
+                            break;
+                        }
+                        // 找出這些完成品項中，最晚的那個完成時間
+                        if (u.timestamp) {
+                            let safeTsStr = u.timestamp.replace(/-/g, '/'); // 確保 Safari 可以解析
+                            let ts = new Date(safeTsStr).getTime();
+                            if (!isNaN(ts) && ts > latestTimestamp) {
+                                latestTimestamp = ts;
+                            }
+                        }
+                    }
+
+                    // 如果全部完成，且最後一個完成的時間剛好落在我們首頁選的日期 -> 亮燈！
+                    if (allSigned && latestTimestamp > 0) {
+                        let latestDate = new Date(latestTimestamp);
+                        let latestDateString = getLocalDateString(latestDate);
+                        if (latestDateString === targetDateStr) {
+                            isCompleted = true;
+                            break; // 只要找到任何一天的單據是在今天完成的，就亮燈
+                        }
+                    }
+                }
+            }
+            return isCompleted;
+        }
+
         function renderHome() {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allBaseHotels.filter(c => c.toLowerCase().includes(keyword));
@@ -320,29 +380,12 @@
             const grid = document.getElementById('hotelGrid');
             if (filtered.length > 0) {
                 grid.innerHTML = filtered.map(c => {
-                    let isOrange = false;
                     const targetDate = document.getElementById('homeDatePicker').value;
-                    
                     let targetCat = masterData.find(d => d.baseName === c && d.deptName === "房務");
                     let fullHotelName = targetCat ? targetCat.hotel : (c + " 房務");
                     
-                    let templateItems = masterData.filter(d => d.hotel === fullHotelName).map(d => d.item);
-                    let pillowIdx = templateItems.indexOf("枕套");
-                    
-                    if (pillowIdx !== -1) {
-                        let targetItems = templateItems.slice(pillowIdx + 1);
-                        const todayInputs = (userInputs[targetDate] && userInputs[targetDate][fullHotelName]) || {};
-                        const customItems = Object.keys(todayInputs).filter(item => !templateItems.includes(item));
-                        let allItemsToCheck = targetItems.concat(customItems);
-                        
-                        if (allItemsToCheck.length > 0) {
-                            isOrange = allItemsToCheck.every(item => {
-                                let u = todayInputs[item];
-                                // 容許阿姨的數量是空白，只要有「複點簽名 (doubleSignature)」就亮橘燈！
-                                return u && u.doubleSignature;
-                            });
-                        }
-                    }
+                    // ⭐ 使用新的「實際完工日」檢查邏輯
+                    let isOrange = checkHotelCompletedOnDate(fullHotelName, targetDate);
 
                     let btnClasses = isOrange 
                         ? "bg-orange-500 border-2 border-orange-600 shadow-lg active:bg-orange-600 text-white" 
@@ -366,7 +409,7 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
-            // 強制鎖死回到「預設日期規則」，不記憶上次手動改的日期
+            // 強制鎖死回到「預設單據日期規則」
             document.getElementById('datePicker').value = getTargetDateStr(baseName);
             updateDateDisplay();
 
@@ -427,7 +470,7 @@
         function handleInput(date, category, item, field, value) {
             if (!userInputs[date]) userInputs[date] = {};
             if (!userInputs[date][category]) userInputs[date][category] = {};
-            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, isSubmitted: false, signature: '', doubleCount: '', doubleSignature: '', doubleHasSigned: false, isSaving: false, saveError: false };
+            if (!userInputs[date][category][item]) userInputs[date][category][item] = { count: '', note: '', hasSigned: false, isSubmitted: false, signature: '', doubleCount: '', doubleSignature: '', doubleHasSigned: false, isSaving: false, saveError: false, timestamp: '' };
             userInputs[date][category][item][field] = value;
         }
 
@@ -449,7 +492,7 @@
             userInputs[dateStr][currentHotelName][newItemName] = { 
                 count: '', note: '', hasSigned: false, isSubmitted: false, 
                 signature: '', doubleCount: '', doubleSignature: '', doubleHasSigned: false,
-                isSaving: false, saveError: false
+                isSaving: false, saveError: false, timestamp: ''
             };
 
             inputEl.value = ""; 
@@ -705,15 +748,18 @@
 
             if(!u.signature && !u.doubleSignature) return; 
 
+            const nowStr = getLocalTimestamp(); // ⭐ 產生精準的作業時間戳記
+
             const payload = { 
                 type: 'inventory', date: dateStr, hotel: category, item: item, 
                 count: (u.count !== undefined && u.count !== null && u.count !== '') ? String(u.count) : '', 
                 note: u.note || '', signature: u.signature || '', 
                 doubleCount: (u.doubleCount !== undefined && u.doubleCount !== null && u.doubleCount !== '') ? String(u.doubleCount) : '', 
                 doubleSignature: u.doubleSignature || '',
-                timestamp: new Date().toLocaleString() 
+                timestamp: nowStr // ⭐ 送出實際操作的時間
             };
             
+            handleInput(dateStr, category, item, 'timestamp', nowStr); // ⭐ 本地同步存下這個時間
             handleInput(dateStr, category, item, 'isSaving', true);
             handleInput(dateStr, category, item, 'saveError', false);
             renderItems();
