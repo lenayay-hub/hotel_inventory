@@ -182,7 +182,7 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六", "媚力泊"]; 
+        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
 
         let masterData = []; 
         let userInputs = {}; 
@@ -260,6 +260,7 @@
         }
 
         async function init() {
+            // 首頁儀表板預設為今天
             const today = new Date();
             document.getElementById('homeDatePicker').value = getLocalDateString(today);
             
@@ -332,39 +333,39 @@
                     if (pillowIdx !== -1) {
                         let targetItems = templateItems.slice(pillowIdx + 1);
                         
-                        let allInputsForHotel = {};
+                        // ★ 核心修復：逐單(每天)分開檢查，並且加入「防呆頂替機制」
                         for (let docDate in userInputs) {
-                            if (userInputs[docDate][fullHotelName]) {
-                                for (let item in userInputs[docDate][fullHotelName]) {
-                                    if (userInputs[docDate][fullHotelName][item].doubleSignature) {
-                                        allInputsForHotel[item] = userInputs[docDate][fullHotelName][item];
-                                    } else if (!allInputsForHotel[item]) {
-                                        allInputsForHotel[item] = userInputs[docDate][fullHotelName][item];
+                            let inputs = userInputs[docDate][fullHotelName];
+                            if (!inputs) continue;
+
+                            const customItems = Object.keys(inputs).filter(item => !templateItems.includes(item));
+                            let allItemsToCheck = targetItems.concat(customItems);
+                            
+                            if (allItemsToCheck.length > 0) {
+                                let allSigned = true;
+                                let maxSignDate = "";
+                                
+                                for (let item of allItemsToCheck) {
+                                    let u = inputs[item];
+                                    
+                                    // 容許數量空白，只要「沒有主管簽名」，這張單子就算沒做完
+                                    if (!u || !u.doubleSignature) {
+                                        allSigned = false;
+                                        break;
+                                    }
+                                    
+                                    // 找出這張單子最晚的簽名時間。如果還沒抓到時間，就拿單據日期來頂替相容
+                                    let signDate = u.doubleSignDate || docDate;
+                                    if (signDate > maxSignDate) {
+                                        maxSignDate = signDate;
                                     }
                                 }
-                            }
-                        }
-
-                        const customItems = Object.keys(allInputsForHotel).filter(item => !templateItems.includes(item));
-                        let allItemsToCheck = targetItems.concat(customItems);
-                        
-                        if (allItemsToCheck.length > 0) {
-                            let allSigned = true;
-                            let maxSignDate = "";
-                            
-                            for (let item of allItemsToCheck) {
-                                let u = allInputsForHotel[item];
-                                if (!u || !u.doubleSignature || !u.doubleSignDate) {
-                                    allSigned = false;
-                                    break;
+                                
+                                // 只要這家飯店有「任何一張單子」全部簽滿，且完工日正好等於首頁儀表板日期，就亮燈！
+                                if (allSigned && maxSignDate !== "" && maxSignDate === targetDate) {
+                                    isOrange = true;
+                                    break; 
                                 }
-                                if (u.doubleSignDate > maxSignDate) {
-                                    maxSignDate = u.doubleSignDate;
-                                }
-                            }
-                            
-                            if (allSigned && maxSignDate !== "" && maxSignDate <= targetDate) {
-                                isOrange = true;
                             }
                         }
                     }
@@ -391,6 +392,7 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
+            // 強制鎖死回到「預設日期規則」，不記憶上次手動改的日期
             document.getElementById('datePicker').value = getTargetDateStr(baseName);
             updateDateDisplay();
 
