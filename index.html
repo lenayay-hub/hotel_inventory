@@ -182,7 +182,7 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        const todayHotels = ["歐遊", "H2O", "花季A館 ", "花季c館", "花季", "捷中正", "文七", "好六"]; 
+        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
 
         let masterData = []; 
         let userInputs = {}; 
@@ -238,13 +238,28 @@
             setTimeout(() => toast.classList.add('opacity-0'), 2500);
         }
 
+        // 只回傳日期部分 (YYYY-MM-DD)
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
 
+        // 回傳完整的精確時間 (YYYY-MM-DD HH:mm:ss) 供寫入試算表使用
+        function getLocalTimeString(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            const h = String(dateObj.getHours()).padStart(2, '0');
+            const min = String(dateObj.getMinutes()).padStart(2, '0');
+            const s = String(dateObj.getSeconds()).padStart(2, '0');
+            return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        }
+
         function getTargetDateStr(baseName) {
             const today = new Date();
-            if (todayHotels.includes(baseName)) {
+            // 模糊包含比對，解決多空白或有後綴字造成比對失敗的問題
+            const isTodayHotel = todayHotels.some(keyword => baseName.includes(keyword));
+            
+            if (isTodayHotel) {
                 return getLocalDateString(today);
             } else {
                 const tomorrow = new Date();
@@ -324,16 +339,32 @@
                     let isOrange = false;
                     const targetDate = document.getElementById('homeDatePicker').value;
                     
-                    let targetCat = masterData.find(d => d.baseName === c && d.deptName === "房務");
-                    let fullHotelName = targetCat ? targetCat.hotel : (c + " 房務");
+                    // 判斷有沒有「房務」部門，沒有的話就抓第一個部門
+                    let depts = hotelStructure[c] || [];
+                    let targetDept = depts.includes("房務") ? "房務" : (depts[0] || "");
+                    
+                    let targetCat = masterData.find(d => d.baseName === c && d.deptName === targetDept);
+                    let fullHotelName = targetCat ? targetCat.hotel : (targetDept === "房務" ? (c + " 房務") : (c + " " + targetDept));
                     
                     let templateItems = masterData.filter(d => d.hotel === fullHotelName).map(d => d.item);
-                    let pillowIdx = templateItems.indexOf("枕套");
                     
-                    if (pillowIdx !== -1) {
-                        let targetItems = templateItems.slice(pillowIdx + 1);
-                        
-                        // ★ 核心修復：逐單(每天)分開檢查，並且加入「防呆頂替機制」
+                    let targetItems = [];
+                    let canCheck = false;
+                    
+                    if (targetDept === "房務") {
+                        let pillowIdx = templateItems.indexOf("枕套");
+                        if (pillowIdx !== -1) {
+                            targetItems = templateItems.slice(pillowIdx + 1);
+                            canCheck = true;
+                        }
+                    } else if (targetDept !== "") {
+                        // 沒有房務的飯店：直接將預設第一個部門的「全部品項」納入檢查
+                        targetItems = [...templateItems];
+                        canCheck = true;
+                    }
+                    
+                    if (canCheck) {
+                        // 逐單(每天)分開檢查，並且加入「防呆頂替機制」
                         for (let docDate in userInputs) {
                             let inputs = userInputs[docDate][fullHotelName];
                             if (!inputs) continue;
@@ -354,10 +385,11 @@
                                         break;
                                     }
                                     
-                                    // 找出這張單子最晚的簽名時間。如果還沒抓到時間，就拿單據日期來頂替相容
-                                    let signDate = u.doubleSignDate || docDate;
-                                    if (signDate > maxSignDate) {
-                                        maxSignDate = signDate;
+                                    // 取出最晚的簽名時間，並用 substring(0, 10) 確保只比對「日期」
+                                    let rawSignDate = u.doubleSignDate || docDate;
+                                    let signDateOnly = rawSignDate.substring(0, 10);
+                                    if (signDateOnly > maxSignDate) {
+                                        maxSignDate = signDateOnly;
                                     }
                                 }
                                 
@@ -679,7 +711,8 @@
             } else {
                 handleInput(dateStr, activeCategory, activeItem, 'doubleSignature', sigBase64);
                 handleInput(dateStr, activeCategory, activeItem, 'doubleHasSigned', true); 
-                handleInput(dateStr, activeCategory, activeItem, 'doubleSignDate', getLocalDateString(new Date()));
+                // ★ 這裡會精準記錄主管簽名落筆的「幾點幾分幾秒」傳給雲端
+                handleInput(dateStr, activeCategory, activeItem, 'doubleSignDate', getLocalTimeString(new Date()));
             }
             
             handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); 
