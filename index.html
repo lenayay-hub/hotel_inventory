@@ -338,10 +338,8 @@
                         if (allItemsToCheck.length > 0) {
                             isOrange = allItemsToCheck.every(item => {
                                 let u = todayInputs[item];
-                                // ★ 核心修改點：必須要有數量(包含0)，且必須要有「複點簽名 (doubleSignature)」才亮橘燈
-                                return u && 
-                                       u.count !== '' && u.count !== undefined && u.count !== null &&
-                                       u.doubleSignature;
+                                // ★ 核心修改點：容許阿姨的數量是空白，只要有「複點簽名 (doubleSignature)」就亮橘燈！
+                                return u && u.doubleSignature;
                             });
                         }
                     }
