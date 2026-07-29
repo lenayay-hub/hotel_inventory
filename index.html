@@ -37,9 +37,12 @@
         <!-- ==================== 【首頁：飯店選擇入口大廳】 ==================== -->
         <div id="homeView">
             <div class="flex justify-between items-center mb-6 mt-4 px-1">
-                <h1 class="text-4xl font-black text-gray-800">選擇飯店</h1>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-4xl font-black text-gray-800">選擇飯店</h1>
+                    <span id="syncIndicator" class="text-xs text-green-600 font-bold opacity-0 transition-opacity duration-500">●即時同步中</span>
+                </div>
                 <button onclick="init()" class="bg-blue-100 text-blue-800 px-4 py-3 rounded-xl font-bold text-lg shadow-sm active:bg-blue-200">
-                    🔄 雲端同步
+                    🔄 手動同步
                 </button>
             </div>
             
@@ -104,7 +107,7 @@
                             <svg class="w-6 h-6 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
                         </button>
 
-                        <!-- 手工打造的巨型清單面板 -->
+                        <!-- 手工打造的巨型清單面板 (加入 max-h 確保選項太多時可以內部滑動) -->
                         <div id="customDropdownMenu" class="hidden absolute z-[30000] w-full mt-2 max-h-64 overflow-y-auto bg-white border-2 border-blue-300 rounded-xl shadow-2xl">
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('方巾')">方巾</div>
                             <div class="p-4 border-b border-gray-100 text-2xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('床墊')">床墊</div>
@@ -182,7 +185,7 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
+        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六", "媚力泊"]; 
 
         let masterData = []; 
         let userInputs = {}; 
@@ -196,6 +199,9 @@
         let activeCategory = ""; 
         let activeItem = "";
         let activeRole = ""; 
+        
+        // ★ 自動同步計時器
+        let autoSyncTimer = null;
         
         const canvas = document.getElementById('signCanvas');
         const ctx = canvas.getContext('2d');
@@ -238,12 +244,10 @@
             setTimeout(() => toast.classList.add('opacity-0'), 2500);
         }
 
-        // 只回傳日期部分 (YYYY-MM-DD)
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
 
-        // 回傳完整的精確時間 (YYYY-MM-DD HH:mm:ss) 供寫入試算表使用
         function getLocalTimeString(dateObj) {
             const y = dateObj.getFullYear();
             const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -256,7 +260,6 @@
 
         function getTargetDateStr(baseName) {
             const today = new Date();
-            // 模糊包含比對，解決多空白或有後綴字造成比對失敗的問題
             const isTodayHotel = todayHotels.some(keyword => baseName.includes(keyword));
             
             if (isTodayHotel) {
@@ -274,8 +277,77 @@
             renderHome(); 
         }
 
+        // ==========================================
+        // ★ 隱形背景自動同步功能 (每 30 秒執行一次)
+        // ==========================================
+        async function backgroundSync() {
+            try {
+                // 顯示一下小綠點表示正在同步
+                const indicator = document.getElementById('syncIndicator');
+                if(indicator) {
+                    indicator.classList.remove('opacity-0');
+                    setTimeout(() => indicator.classList.add('opacity-0'), 1500);
+                }
+
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                const data = await res.json();
+                
+                if (data.template && data.template.length > 0) {
+                    masterData = data.template;
+                    hotelStructure = {};
+                    allBaseHotels = [];
+                    masterData.forEach(t => {
+                        let base = t.baseName;
+                        let dept = t.deptName;
+                        if (base && !hotelStructure[base]) {
+                            hotelStructure[base] = [];
+                            allBaseHotels.push(base);
+                        }
+                        if (base && !hotelStructure[base].includes(dept)) {
+                            hotelStructure[base].push(dept);
+                        }
+                    });
+                }
+                
+                if (data.records) {
+                    data.records.forEach(r => {
+                        if(!userInputs[r.date]) userInputs[r.date] = {};
+                        if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
+                        
+                        let local = userInputs[r.date][r.hotel][r.item];
+                        // 🚧 防覆蓋機制：如果這筆資料這台手機「正在上傳中」，絕對不要覆蓋它！
+                        if (local && local.isSaving) return; 
+                        
+                        userInputs[r.date][r.hotel][r.item] = { 
+                            count: (r.count !== undefined && r.count !== null) ? String(r.count) : "",
+                            note: r.note, hasSigned: false, isSubmitted: true, 
+                            signature: r.signature || "", 
+                            doubleCount: (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "",
+                            doubleSignature: r.doubleSignature || "", doubleHasSigned: false,
+                            doubleSignDate: r.doubleSignDate || "",
+                            isSaving: false, saveError: false
+                        };
+                    });
+                }
+                
+                // 無聲無息地刷新目前看到的畫面
+                if (!document.getElementById('homeView').classList.contains('hidden')) {
+                    renderHome();
+                } else if (!document.getElementById('hotelView').classList.contains('hidden')) {
+                    renderItems();
+                }
+            } catch (error) {
+                console.log("背景同步等待下一次...", error);
+            }
+        }
+
+        function startAutoSync() {
+            if (autoSyncTimer) clearInterval(autoSyncTimer);
+            autoSyncTimer = setInterval(backgroundSync, 30000); // 30000 毫秒 = 30 秒
+        }
+        // ==========================================
+
         async function init() {
-            // 首頁儀表板預設為今天
             const today = new Date();
             document.getElementById('homeDatePicker').value = getLocalDateString(today);
             
@@ -324,6 +396,10 @@
                 });
 
                 renderHome(); 
+                
+                // ★ 資料首次載入成功後，啟動背景 30 秒自動同步！
+                startAutoSync();
+
             } catch (error) {
                 document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-red-500 text-center mt-6 font-bold text-2xl">❌ 連線失敗，請重試</div>`;
             }
@@ -339,7 +415,6 @@
                     let isOrange = false;
                     const targetDate = document.getElementById('homeDatePicker').value;
                     
-                    // 判斷有沒有「房務」部門，沒有的話就抓第一個部門
                     let depts = hotelStructure[c] || [];
                     let targetDept = depts.includes("房務") ? "房務" : (depts[0] || "");
                     
@@ -358,13 +433,11 @@
                             canCheck = true;
                         }
                     } else if (targetDept !== "") {
-                        // 沒有房務的飯店：直接將預設第一個部門的「全部品項」納入檢查
                         targetItems = [...templateItems];
                         canCheck = true;
                     }
                     
                     if (canCheck) {
-                        // 逐單(每天)分開檢查，並且加入「防呆頂替機制」
                         for (let docDate in userInputs) {
                             let inputs = userInputs[docDate][fullHotelName];
                             if (!inputs) continue;
@@ -379,13 +452,11 @@
                                 for (let item of allItemsToCheck) {
                                     let u = inputs[item];
                                     
-                                    // 容許數量空白，只要「沒有主管簽名」，這張單子就算沒做完
                                     if (!u || !u.doubleSignature) {
                                         allSigned = false;
                                         break;
                                     }
                                     
-                                    // 取出最晚的簽名時間，並用 substring(0, 10) 確保只比對「日期」
                                     let rawSignDate = u.doubleSignDate || docDate;
                                     let signDateOnly = rawSignDate.substring(0, 10);
                                     if (signDateOnly > maxSignDate) {
@@ -393,7 +464,6 @@
                                     }
                                 }
                                 
-                                // 只要這家飯店有「任何一張單子」全部簽滿，且完工日正好等於首頁儀表板日期，就亮燈！
                                 if (allSigned && maxSignDate !== "" && maxSignDate === targetDate) {
                                     isOrange = true;
                                     break; 
@@ -424,7 +494,6 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
-            // 強制鎖死回到「預設日期規則」，不記憶上次手動改的日期
             document.getElementById('datePicker').value = getTargetDateStr(baseName);
             updateDateDisplay();
 
@@ -711,7 +780,6 @@
             } else {
                 handleInput(dateStr, activeCategory, activeItem, 'doubleSignature', sigBase64);
                 handleInput(dateStr, activeCategory, activeItem, 'doubleHasSigned', true); 
-                // ★ 這裡會精準記錄主管簽名落筆的「幾點幾分幾秒」傳給雲端
                 handleInput(dateStr, activeCategory, activeItem, 'doubleSignDate', getLocalTimeString(new Date()));
             }
             
