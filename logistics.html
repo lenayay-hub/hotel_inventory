@@ -186,7 +186,7 @@
             }
 
             cleanData.forEach(item => {
-                // ★ 隱形濾網：如果出貨數量是空值，或是 0，就直接剔除，不顯示在司機的畫面上！
+                // 隱形濾網：剔除沒有出貨數量的品項
                 if (item.originalQty === "" || item.originalQty === "0" || item.originalQty === 0) {
                     return; 
                 }
@@ -198,17 +198,19 @@
                 if (item.clientSig) groupedData[item.deptName].clientSig = item.clientSig;
                 if (item.driverSig) groupedData[item.deptName].driverSig = item.driverSig;
 
+                // ★ 核心變更：如果雲端資料沒有 actualQty (第一次開啟時)，直接預設為 originalQty，確保請款必定有依據數字
+                let finalActualQty = (item.actualQty !== undefined && item.actualQty !== "" && item.actualQty !== null) ? item.actualQty : item.originalQty;
+
                 groupedData[item.deptName].items.push({
                     deptName: item.deptName,
                     itemName: item.itemName,
                     originalQty: item.originalQty,
                     auntNote: item.auntNote,
-                    actualQty: item.actualQty,
+                    actualQty: finalActualQty,
                     driverNote: item.driverNote
                 });
             });
 
-            // ★ 如果過濾完發現沒有任何有數量的品項，要顯示提示
             if (Object.keys(groupedData).length === 0) {
                 document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-xl">🎉 此日期所有品項數量皆為 0，無須點交！</div>';
                 return;
@@ -222,9 +224,11 @@
             const original = groupedData[dept].items[idx].originalQty;
             const statusSpan = document.getElementById(`status-${dept}-${idx}`);
             if (String(val) === String(original)) {
-                statusSpan.innerHTML = "✅ 相符"; statusSpan.className = "text-green-600 font-bold ml-3 text-base";
+                statusSpan.innerHTML = "✅ 相符"; 
+                statusSpan.className = "text-green-600 font-bold ml-3 text-base";
             } else {
-                statusSpan.innerHTML = "❌ 不符"; statusSpan.className = "text-red-500 font-bold ml-3 text-base";
+                statusSpan.innerHTML = "⚠️ 已修改"; 
+                statusSpan.className = "text-red-500 font-bold ml-3 text-base";
             }
         }
 
@@ -255,7 +259,7 @@
 
                 let itemsHtml = groupedData[dept].items.map((item, idx) => {
                     let isMatching = String(item.actualQty) === String(item.originalQty);
-                    let statusText = isMatching ? "✅ 相符" : "❌ 不符";
+                    let statusText = isMatching ? "✅ 相符" : "⚠️ 已修改";
                     let statusClass = isMatching ? "text-green-600 font-bold ml-3 text-base" : "text-red-500 font-bold ml-3 text-base";
                     
                     return `
@@ -269,9 +273,9 @@
                         </div>
                         ${item.auntNote ? `<div class="text-base text-orange-700 bg-orange-100 p-3 rounded-lg mb-3 font-bold border border-orange-200">📝 飯店備註: ${item.auntNote}</div>` : ''}
                         
-                        <div class="bg-blue-50 p-3 rounded-lg">
+                        <div class="bg-blue-50 p-3 rounded-lg border ${isMatching ? 'border-transparent' : 'border-red-300'}">
                             <div class="flex justify-between items-center">
-                                <span class="font-bold text-gray-700">飯店實點：</span>
+                                <span class="font-bold text-blue-900">實收(請款)量：</span>
                                 <div class="flex items-center">
                                     <input type="number" oninput="handleQtyChange('${dept}', ${idx}, this.value)" value="${item.actualQty}" 
                                            class="w-20 p-1 text-right font-black text-2xl outline-none rounded ${isCompleted ? 'bg-transparent text-gray-600 pr-0' : 'bg-white border-b-2 border-blue-500 text-blue-700 shadow-sm'}" 
@@ -363,7 +367,7 @@
                 itemName: item.itemName,
                 originalQty: item.originalQty,
                 auntNote: item.auntNote,
-                actualQty: item.actualQty,
+                actualQty: item.actualQty, // ★ 這裡已經將「請款數量」準確無誤地帶入了
                 driverNote: item.driverNote
             }));
 
@@ -377,13 +381,11 @@
                 driverSigBase64: dBase64
             });
 
-            // 2. 隱形智慧同步：自動尋找「尚未簽名」的其他部門並幫忙蓋章
+            // 2. 自動同步其他尚未簽名部門
             if (isNewDriverSig) {
                 for (let dept in groupedData) {
                     if (dept !== activeDeptKey) {
                         let existOtherDriver = groupedData[dept].driverSig;
-                        
-                        // ★ 核心邏輯：只有當其他部門是「空白」時，才自動幫忙簽！
                         if (!existOtherDriver) {
                             let deptItemsSafe = groupedData[dept].items.map(item => ({
                                 deptName: item.deptName,
@@ -399,8 +401,8 @@
                                 deptName: dept,
                                 date: currentDate,
                                 verifyJson: JSON.stringify(deptItemsSafe),
-                                clientSigBase64: groupedData[dept].clientSig || "", // 飯店端保留不覆蓋
-                                driverSigBase64: dBase64 // 套用最新簽名
+                                clientSigBase64: groupedData[dept].clientSig || "", 
+                                driverSigBase64: dBase64 
                             });
                             syncDepts.push(dept);
                         }
@@ -408,7 +410,7 @@
                 }
             }
 
-            // 3. 全數發送至後台大腦
+            // 3. 發送至後台大腦
             Promise.all(payloads.map(payload => 
                 fetch(API_URL, { 
                     method: 'POST',
