@@ -185,7 +185,7 @@
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
-        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季c館 ", "花季", "捷中正", "文七", "好六", "媚力泊"]; 
+        const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
 
         let masterData = []; 
         let userInputs = {}; 
@@ -426,12 +426,16 @@
                     let targetItems = [];
                     let canCheck = false;
                     
+                    // ★ 防護邏輯更新：確保有品項可以檢查
                     if (targetDept === "房務") {
                         let pillowIdx = templateItems.indexOf("枕套");
                         if (pillowIdx !== -1) {
                             targetItems = templateItems.slice(pillowIdx + 1);
-                            canCheck = true;
+                        } else {
+                            // 如果這間飯店的房務「沒有設定枕套」，就自動降級為檢查「全部品項」
+                            targetItems = [...templateItems];
                         }
+                        canCheck = true;
                     } else if (targetDept !== "") {
                         targetItems = [...templateItems];
                         canCheck = true;
