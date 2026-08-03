@@ -28,7 +28,7 @@
     <div id="msgModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[20000]">
         <div class="bg-white p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl">
             <div id="msgIcon" class="text-6xl mb-4">⚠️</div>
-            <h3 id="msgText" class="text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-line">提示訊息</h3>
+            <h3 id="msgText" class="text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-line break-words">提示訊息</h3>
             <button onclick="closeMsg()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-xl shadow-md active:bg-blue-700">我知道了</button>
         </div>
     </div>
@@ -279,40 +279,52 @@
                 
                 btn.innerText = "⏳ 下載完畢！正在寫入 Firebase (約 10 秒)...";
 
-                // 寫入基礎設定 (模板)
-                const templateBatch = writeBatch(db);
-                data.template.forEach(t => {
-                    const docRef = doc(db, 'inventory_template', `${t.baseName}_${t.deptName}_${t.item}`);
-                    templateBatch.set(docRef, t);
-                });
-                await templateBatch.commit();
-
-                // 寫入所有歷史紀錄 (Firestore 限制每批最多 500 筆，我們切塊寫入)
+                // 將大筆資料分塊 (Firestore 一次 batch 最多處理 500 筆)
                 const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
-                const recordChunks = chunkArray(data.records, 450);
 
-                for (let i = 0; i < recordChunks.length; i++) {
-                    const batch = writeBatch(db);
-                    recordChunks[i].forEach(r => {
-                        // 移除無效或 undefined 資料
-                        const countStr = (r.count !== undefined && r.count !== null) ? String(r.count) : "";
-                        const doubleCountStr = (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "";
-                        
-                        const docRef = doc(db, 'inventory_records', `${r.date}_${r.hotel}_${r.item}`);
-                        batch.set(docRef, {
-                            date: r.date,
-                            hotel: r.hotel,
-                            item: r.item,
-                            count: countStr,
-                            note: r.note || "",
-                            signature: r.signature || "",
-                            doubleCount: doubleCountStr,
-                            doubleSignature: r.doubleSignature || "",
-                            doubleSignDate: r.doubleSignDate || "",
-                            timestamp: new Date().toLocaleString() 
+                // 1. 寫入基礎設定 (模板)
+                if (data.template && data.template.length > 0) {
+                    const templateChunks = chunkArray(data.template, 450);
+                    for (let i = 0; i < templateChunks.length; i++) {
+                        const batch = writeBatch(db);
+                        templateChunks[i].forEach(t => {
+                            // 🚧 防護機制：把品項名稱裡的斜線 (/) 換成減號 (-)，避免 Firebase 當成資料夾！
+                            const safeItem = (t.item || "").replace(/\//g, '-');
+                            const docRef = doc(db, 'inventory_template', `${t.baseName}_${t.deptName}_${safeItem}`);
+                            batch.set(docRef, t);
                         });
-                    });
-                    await batch.commit();
+                        await batch.commit();
+                    }
+                }
+
+                // 2. 寫入所有歷史紀錄
+                if (data.records && data.records.length > 0) {
+                    const recordChunks = chunkArray(data.records, 450);
+                    for (let i = 0; i < recordChunks.length; i++) {
+                        const batch = writeBatch(db);
+                        recordChunks[i].forEach(r => {
+                            const countStr = (r.count !== undefined && r.count !== null) ? String(r.count) : "";
+                            const doubleCountStr = (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "";
+                            
+                            // 🚧 防護機制：把品項名稱裡的斜線 (/) 換成減號 (-)
+                            const safeItem = (r.item || "").replace(/\//g, '-');
+                            const docRef = doc(db, 'inventory_records', `${r.date}_${r.hotel}_${safeItem}`);
+                            
+                            batch.set(docRef, {
+                                date: r.date || "",
+                                hotel: r.hotel || "",
+                                item: r.item || "",
+                                count: countStr,
+                                note: r.note || "",
+                                signature: r.signature || "",
+                                doubleCount: doubleCountStr,
+                                doubleSignature: r.doubleSignature || "",
+                                doubleSignDate: r.doubleSignDate || "",
+                                timestamp: new Date().toLocaleString() 
+                            });
+                        });
+                        await batch.commit();
+                    }
                 }
 
                 // 註記已搬家成功，永久隱藏按鈕
@@ -325,7 +337,8 @@
 
             } catch(e) {
                 console.error(e);
-                showMessage("搬家過程遇到一點網路問題，請再試一次！");
+                // 顯示精確的錯誤訊息給我們看
+                showMessage("搬家失敗，原因如下：\n\n" + e.message + "\n\n👉 (如果是 missing permissions，代表 Firebase 規則沒有發布成功喔！)");
                 btn.innerText = "重新嘗試搬家";
                 btn.disabled = false;
             }
@@ -992,8 +1005,9 @@
             };
 
             try {
-                // 直接儲存至 Firebase 資料庫，約 0.1 ~ 0.5 秒完成
-                const docRef = doc(db, 'inventory_records', `${dateStr}_${category}_${item}`);
+                // 直接儲存至 Firebase 資料庫，防護斜線字元
+                const safeItem = item.replace(/\//g, '-');
+                const docRef = doc(db, 'inventory_records', `${dateStr}_${category}_${safeItem}`);
                 await setDoc(docRef, payload);
 
                 handleInput(dateStr, category, item, 'isSaving', false);
