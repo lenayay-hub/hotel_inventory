@@ -126,10 +126,15 @@
             <span style="color: #2563eb; font-weight: bold; font-size: 16px;">🔄 正在從後台同步最新飯店名單...</span>
         </div>
 
-        <div style="margin-top: 20px; border-top: 2px solid #1f2937; padding-top: 15px;">
+        <div style="margin-top: 20px; border-top: 2px solid #1f2937; padding-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn-load" onclick="fetchData()">⬇️ 載入報表 (計算勾選的名單)</button>
             <button class="btn-excel" onclick="exportToExcel()">📊 匯出 Excel</button>
             <button onclick="window.print()" style="font-size: 16px; padding: 10px 20px;">🖨️ 列印 / 匯出 PDF</button>
+            
+            <!-- ★ 新增：專屬的物流舊資料吸取按鈕 -->
+            <button id="syncLogisticsBtn" onclick="syncLogisticsFromGoogleSheet()" style="background-color: #fef08a; color: #854d0e; border-color: #fde047; font-size: 16px; padding: 10px 20px; margin-left: auto;">
+                📥 補救：吸取舊版物流與簽名 (從試算表)
+            </button>
         </div>
     </div>
 
@@ -145,7 +150,8 @@
     <!-- ★ 引入 Firebase 模組 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+        // ★ 加入 writeBatch 模組用於大量寫入
+        import { getFirestore, collection, query, where, getDocs, doc, getDoc, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
         // ★ 您的 Firebase 金鑰
         const firebaseConfig = {
@@ -161,7 +167,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // 試算表仍作為單價來源
+        // 試算表仍作為單價來源，也作為這次舊資料吸取來源
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
         // ==========================================
@@ -198,6 +204,7 @@
         window.exportToExcel = exportToExcel;
         window.updateQty = updateQty;
         window.updateNote = updateNote;
+        window.syncLogisticsFromGoogleSheet = syncLogisticsFromGoogleSheet; // ★ 綁定新功能
 
         function formatMoney(num) {
             return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -287,6 +294,83 @@
             });
         }
 
+        // ==========================================
+        // ★ 補救機制：從 Google 試算表強制把舊的物流簽名吸進 Firebase
+        // ==========================================
+        async function syncLogisticsFromGoogleSheet() {
+            const startDate = document.getElementById('startDatePicker').value;
+            const endDate = document.getElementById('endDatePicker').value;
+            const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value).join(',');
+
+            if (!selectedHotels) {
+                alert("⚠️ 錯誤：請先勾選您想吸取舊資料的飯店！\n（💡 建議：直接點擊上方的『一鍵全選』按鈕，一次全部吸過來最保險！）");
+                return;
+            }
+
+            const btn = document.getElementById('syncLogisticsBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ 正在跨海吸取舊簽名中...";
+            btn.disabled = true;
+
+            try {
+                // 1. 去 Google 試算表抓舊的結帳資料
+                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels)}&t=${new Date().getTime()}`);
+                const data = await res.json();
+
+                if (data.records && data.records.length > 0) {
+                    const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
+                    const recordChunks = chunkArray(data.records, 450);
+
+                    let totalImported = 0;
+
+                    // 2. 一批一批寫入 Firebase 的 logistics_records
+                    for (let i = 0; i < recordChunks.length; i++) {
+                        const batch = writeBatch(db);
+                        recordChunks[i].forEach(r => {
+                            // 只有包含簽名的才算物流點收紀錄，才需要搬
+                            if (!r.clientSig && !r.driverSig) return; 
+
+                            let dateStr = r.date || "";
+                            let deptStr = r.dept || r.deptName || "";
+                            
+                            // 嘗試從 "H2O 房務" 中還原出 hotelKeyword "H2O"
+                            let hotelKw = r.hotelKeyword || deptStr.split(/[ -]/)[0] || deptStr;
+
+                            let items = [];
+                            try { items = JSON.parse(r.verifyJson); } catch(e) { }
+
+                            // 產生對應物流的 docId
+                            const docId = `${dateStr}_${hotelKw}_${deptStr}`;
+                            const docRef = doc(db, 'logistics_records', docId);
+
+                            batch.set(docRef, {
+                                date: dateStr,
+                                hotelKeyword: hotelKw,
+                                deptName: deptStr,
+                                items: items,
+                                clientSig: r.clientSig || "",
+                                driverSig: r.driverSig || "",
+                                timestamp: new Date().toLocaleString()
+                            }, { merge: true });
+                            
+                            totalImported++;
+                        });
+                        await batch.commit();
+                    }
+                    
+                    alert(`✅ 搬家大成功！\n成功將 ${totalImported} 筆「舊物流簽名與點收紀錄」吸入 Firebase 極速資料庫！\n\n現在請點擊藍色的「載入報表」，您就會看到以前的單據通通回來了！`);
+                } else {
+                    alert("⚠️ 試算表中沒有符合此區間與飯店的舊物流簽名資料喔！");
+                }
+            } catch (error) {
+                console.error(error);
+                alert("❌ 吸取失敗，請確認網路狀態。");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
         // ★ 極速版：從 Firebase 抓物流結帳紀錄，單價依然從 Google 試算表抓
         async function fetchData() {
             const startDate = document.getElementById('startDatePicker').value;
@@ -338,7 +422,7 @@
                 });
 
                 if(fbRecords.length === 0) {
-                    container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已雙方簽收的點交紀錄。</div>`;
+                    container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已雙方簽收的點交紀錄。<br>如果您確定之前有點交過，請點擊上方的「📥 吸取舊版物流與簽名」按鈕來補救舊資料！</div>`;
                     return;
                 }
 
