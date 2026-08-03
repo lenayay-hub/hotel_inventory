@@ -41,13 +41,20 @@
                     <h1 class="text-4xl font-black text-gray-800">選擇飯店</h1>
                     <span id="syncIndicator" class="text-xs text-green-600 font-bold opacity-0 transition-opacity duration-500">●即時同步中</span>
                 </div>
-                <!-- ★ 新增了「更新設定」按鈕與手動同步並排 -->
-                <div class="flex gap-2">
-                    <button onclick="syncSettingsFromSheet(event)" class="bg-purple-100 text-purple-800 px-3 py-3 rounded-xl font-bold text-sm shadow-sm active:bg-purple-200 flex-1">
-                        ⚙️ 更新試算表設定
-                    </button>
-                    <button onclick="init(true)" class="bg-blue-100 text-blue-800 px-3 py-3 rounded-xl font-bold text-sm shadow-sm active:bg-blue-200 flex-1">
-                        🔄 重新載入
+                
+                <!-- 頂部按鈕區：包含設定、重整與舊資料吸塵器 -->
+                <div class="flex flex-col gap-2 w-1/2">
+                    <div class="flex gap-2">
+                        <button onclick="syncSettingsFromSheet(event)" class="bg-purple-100 text-purple-800 px-3 py-2 rounded-xl font-bold text-sm shadow-sm active:bg-purple-200 flex-1">
+                            ⚙️ 更新設定
+                        </button>
+                        <button onclick="init(true)" class="bg-blue-100 text-blue-800 px-3 py-2 rounded-xl font-bold text-sm shadow-sm active:bg-blue-200 flex-1">
+                            🔄 重新載入
+                        </button>
+                    </div>
+                    <!-- ★ 補救舊資料的按鈕 -->
+                    <button onclick="syncOldInventoryFromSheet(event)" class="bg-yellow-100 text-yellow-800 px-3 py-2 rounded-xl font-bold text-sm shadow-sm active:bg-yellow-200 w-full text-center">
+                        📥 吸取舊盤點資料
                     </button>
                 </div>
             </div>
@@ -188,7 +195,8 @@
     <!-- ★ 引入 Firebase 模組 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getFirestore, collection, doc, setDoc, getDocs, writeBatch, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+        // ★ 加入了 addDoc 模組，用於紀錄阿姨歷史軌跡
+        import { getFirestore, collection, doc, setDoc, getDocs, writeBatch, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
@@ -227,7 +235,6 @@
         let painting = false;
         let calcExpr = "";
 
-        // --- 將所有的函數掛載到 window，讓 HTML 的 onClick 可以呼叫 ---
         window.showToast = showToast;
         window.showMessage = showMessage;
         window.closeMsg = closeMsg;
@@ -255,8 +262,76 @@
         window.calcConfirm = calcConfirm;
         window.handleItemClick = handleItemClick;
         window.syncSettingsFromSheet = syncSettingsFromSheet;
+        window.syncOldInventoryFromSheet = syncOldInventoryFromSheet; // ★ 綁定吸取按鈕
 
-        // ★ 核心修正：直接把整個飯店清單「打包成一本目錄」鎖進 Firebase，100% 保證順序絕不錯亂！
+        // ==========================================
+        // ★ 舊盤點資料吸塵器 (徹底修復斜線/減號問題)
+        // ==========================================
+        async function syncOldInventoryFromSheet(event) {
+            const btn = event.currentTarget;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ 吸取舊紀錄中...";
+            btn.disabled = true;
+
+            try {
+                showToast("正在向試算表索取所有舊盤點紀錄...");
+                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
+                const data = await res.json();
+
+                if (data.records && data.records.length > 0) {
+                    btn.innerHTML = "⏳ 寫入 Firebase...";
+                    const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
+                    const recordChunks = chunkArray(data.records, 450);
+
+                    let totalImported = 0;
+                    for (let i = 0; i < recordChunks.length; i++) {
+                        const batch = writeBatch(db);
+                        recordChunks[i].forEach(r => {
+                            // ★ 最關鍵的一步：把舊資料的 2024/10/31 強制變成 2024-10-31
+                            let dateStr = String(r.date || "").replace(/\//g, '-').trim();
+                            let hotelStr = String(r.hotel || "").trim();
+                            let itemStr = String(r.item || "").trim();
+                            if(!dateStr || !hotelStr || !itemStr) return;
+
+                            const countStr = (r.count !== undefined && r.count !== null) ? String(r.count) : "";
+                            const doubleCountStr = (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "";
+                            const safeItem = itemStr.replace(/\//g, '-');
+                            
+                            const rawDocId = `${dateStr}_${hotelStr}_${safeItem}`;
+                            const docId = rawDocId.replace(/[\/\\?%*:|"<>]/g, '-');
+
+                            const docRef = doc(db, 'inventory_records', docId);
+                            batch.set(docRef, {
+                                date: dateStr,
+                                hotel: hotelStr,
+                                item: itemStr,
+                                count: countStr,
+                                note: r.note || "",
+                                signature: r.signature || "",
+                                doubleCount: doubleCountStr,
+                                doubleSignature: r.doubleSignature || "",
+                                doubleSignDate: r.doubleSignDate || "",
+                                timestamp: new Date().toLocaleString()
+                            }, { merge: true });
+                            totalImported++;
+                        });
+                        await batch.commit();
+                    }
+
+                    showMessage(`✅ 搬家大成功！\n成功將 ${totalImported} 筆舊盤點紀錄吸入極速雲端！\n且已為您將日期格式全部修復完畢。`, false);
+                    await backgroundSync(true); 
+                } else {
+                    showMessage("試算表中沒有舊盤點資料喔！");
+                }
+            } catch (e) {
+                console.error(e);
+                showMessage("吸取失敗，請確認網路狀態！\n錯誤: " + e.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
         async function syncSettingsFromSheet(event) {
             const btn = event.currentTarget;
             const originalText = btn.innerText;
@@ -270,14 +345,9 @@
 
                 if (data.template && data.template.length > 0) {
                     btn.innerText = "⏳ 寫入Firebase...";
-                    
-                    // 打包存入單一文件，保留絕對的陣列順序
                     const docRef = doc(db, 'inventory_config', 'master_template');
                     await setDoc(docRef, { items: data.template });
-                    
                     showToast("✅ 設定同步完成！正在重新載入畫面...");
-                    
-                    // 重整畫面
                     await backgroundSync(false);
                 } else {
                     showMessage("從試算表抓到的設定是空的！\n請檢查您的 Google Apps Script (.gs) 檔案。");
@@ -370,7 +440,7 @@
         }
 
         // ==========================================
-        // ★ Firebase 極速版：背景讀取資料
+        // ★ Firebase 極速版：背景讀取資料 (加上自動轉日期機制)
         // ==========================================
         async function backgroundSync(isManual = false) {
             try {
@@ -382,7 +452,6 @@
 
                 if(isManual) showToast("🔄 極速同步中...");
 
-                // 1. 瞬間抓取「打包好」的飯店結構 (保證絕對順序)
                 const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
                 
                 if (templateDoc.exists() && templateDoc.data().items) {
@@ -404,17 +473,20 @@
                     showMessage("Firebase 中沒有飯店設定檔！\n👉 請先點擊上方的【⚙️ 更新試算表設定】按鈕。");
                 }
                 
-                // 2. 瞬間抓取盤點紀錄
                 const recordsSnap = await getDocs(collection(db, 'inventory_records'));
                 recordsSnap.forEach(doc => {
                     const r = doc.data();
-                    if(!userInputs[r.date]) userInputs[r.date] = {};
-                    if(!userInputs[r.date][r.hotel]) userInputs[r.date][r.hotel] = {};
                     
-                    let local = userInputs[r.date][r.hotel][r.item];
+                    // ★ 最關鍵：不管 Firebase 裡面長什麼樣，抓出來一律轉成減號 
+                    let dDate = String(r.date || "").replace(/\//g, '-').trim();
+                    
+                    if(!userInputs[dDate]) userInputs[dDate] = {};
+                    if(!userInputs[dDate][r.hotel]) userInputs[dDate][r.hotel] = {};
+                    
+                    let local = userInputs[dDate][r.hotel][r.item];
                     if (local && local.isSaving) return; 
                     
-                    userInputs[r.date][r.hotel][r.item] = { 
+                    userInputs[dDate][r.hotel][r.item] = { 
                         count: r.count || "",
                         note: r.note || "", 
                         hasSigned: false, isSubmitted: true, 
@@ -488,7 +560,6 @@
                 console.log("快取讀取失敗", e);
             }
             
-            // 背景抓取 Firebase 最新資料
             backgroundSync(false);
             startAutoSync();
         }
@@ -515,7 +586,6 @@
                     let canCheck = false;
                     
                     if (targetDept === "房務") {
-                        // 強化搜尋，防止空白字元干擾
                         let pillowIdx = templateItems.findIndex(i => (i || "").trim() === "枕套");
                         if (pillowIdx !== -1) {
                             targetItems = templateItems.slice(pillowIdx + 1);
@@ -945,10 +1015,29 @@
             };
 
             try {
-                // 直接儲存至 Firebase 資料庫，防護斜線字元
+                // 直接儲存至 Firebase 資料庫
                 const safeItem = item.replace(/\//g, '-');
                 const docRef = doc(db, 'inventory_records', `${dateStr}_${category}_${safeItem}`);
                 await setDoc(docRef, payload);
+
+                // ★ 阿姨盤點時光機發報器：同步記錄至歷史軌跡
+                try {
+                    await addDoc(collection(db, 'history_logs'), {
+                        logDate: getLocalDateString(new Date()), 
+                        timestamp: Date.now(),
+                        actionTime: getLocalTimeString(new Date()), 
+                        date: dateStr,
+                        hotel: category,
+                        item: item,
+                        count: payload.count,
+                        doubleCount: payload.doubleCount,
+                        signature: payload.signature,
+                        doubleSignature: payload.doubleSignature,
+                        note: payload.note
+                    });
+                } catch (logErr) {
+                    console.warn("軌跡紀錄寫入失敗，但不影響主存檔", logErr);
+                }
 
                 handleInput(dateStr, category, item, 'isSaving', false);
                 handleInput(dateStr, category, item, 'isSubmitted', true); 
