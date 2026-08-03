@@ -34,16 +34,6 @@
     </div>
 
     <div class="main-container">
-        
-        <!-- ★ 一鍵搬家精靈 (搬完會自動隱藏) -->
-        <div id="migrationContainer" class="hidden bg-yellow-50 p-5 rounded-2xl shadow-sm mb-6 border-2 border-yellow-300">
-            <h3 class="font-black text-yellow-800 text-xl mb-2">🚀 Firebase 無痛搬家精靈</h3>
-            <p class="text-sm text-yellow-700 mb-4 font-bold">檢測到您已換上 Firebase 金鑰。請點擊下方按鈕，系統會自動把 Google 試算表的舊資料全部拉進極速資料庫！<br>(✅ 只要按一次即可，約需 10 秒)</p>
-            <button id="migrateBtn" onclick="migrateData()" class="w-full py-4 bg-yellow-500 text-white rounded-xl font-black text-xl shadow-md active:bg-yellow-600">
-                開始一鍵搬家
-            </button>
-        </div>
-
         <!-- ==================== 【首頁：飯店選擇入口大廳】 ==================== -->
         <div id="homeView">
             <div class="flex justify-between items-center mb-6 mt-4 px-1">
@@ -51,9 +41,15 @@
                     <h1 class="text-4xl font-black text-gray-800">選擇飯店</h1>
                     <span id="syncIndicator" class="text-xs text-green-600 font-bold opacity-0 transition-opacity duration-500">●即時同步中</span>
                 </div>
-                <button onclick="init(true)" class="bg-blue-100 text-blue-800 px-4 py-3 rounded-xl font-bold text-lg shadow-sm active:bg-blue-200">
-                    🔄 手動同步
-                </button>
+                <!-- ★ 新增了「更新設定」按鈕與手動同步並排 -->
+                <div class="flex gap-2">
+                    <button onclick="syncSettingsFromSheet(event)" class="bg-purple-100 text-purple-800 px-3 py-3 rounded-xl font-bold text-sm shadow-sm active:bg-purple-200 flex-1">
+                        ⚙️ 更新試算表設定
+                    </button>
+                    <button onclick="init(true)" class="bg-blue-100 text-blue-800 px-3 py-3 rounded-xl font-bold text-sm shadow-sm active:bg-blue-200 flex-1">
+                        🔄 重新載入
+                    </button>
+                </div>
             </div>
             
             <div class="bg-white p-3 rounded-2xl shadow-sm mb-4 border border-gray-200 flex items-center justify-between">
@@ -194,7 +190,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
         import { getFirestore, collection, doc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-        // ★ 您的 Firebase 專屬金鑰
         const firebaseConfig = {
             apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
             authDomain: "hotel-inventory-3a1ad.firebaseapp.com",
@@ -208,7 +203,6 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // 這是舊的 GAS 網址 (僅供一次性搬家用)
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         
         const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
@@ -232,11 +226,6 @@
         const ctx = canvas.getContext('2d');
         let painting = false;
         let calcExpr = "";
-
-        // 確保剛進來時，如果還沒搬家就顯示黃色按鈕
-        if(!localStorage.getItem('firebase_migrated')) {
-            document.getElementById('migrationContainer').classList.remove('hidden');
-        }
 
         // --- 將所有的函數掛載到 window，讓 HTML 的 onClick 可以呼叫 ---
         window.showToast = showToast;
@@ -265,81 +254,50 @@
         window.calcClear = calcClear;
         window.calcConfirm = calcConfirm;
         window.handleItemClick = handleItemClick;
-        window.migrateData = migrateData;
+        window.syncSettingsFromSheet = syncSettingsFromSheet;
 
-        // ★ 一鍵搬家精靈：從 GAS 下載，整批寫入 Firebase
-        async function migrateData() {
-            const btn = document.getElementById('migrateBtn');
-            btn.innerText = "⏳ 正在從 Google 下載舊資料...";
+        // ★ 新增功能：從 Google 試算表強制抓取最新「設定檔」並寫入 Firebase
+        async function syncSettingsFromSheet(event) {
+            const btn = event.currentTarget;
+            const originalText = btn.innerText;
+            btn.innerText = "⏳ 下載設定中...";
             btn.disabled = true;
 
             try {
+                showToast("正在向 Google 試算表索取最新設定...");
                 const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                 const data = await res.json();
-                
-                btn.innerText = "⏳ 下載完畢！正在寫入 Firebase (約 10 秒)...";
 
-                // 將大筆資料分塊 (Firestore 一次 batch 最多處理 500 筆)
-                const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
-
-                // 1. 寫入基礎設定 (模板)
                 if (data.template && data.template.length > 0) {
+                    btn.innerText = "⏳ 寫入Firebase...";
+                    const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
                     const templateChunks = chunkArray(data.template, 450);
+                    
+                    let orderIndex = 0; // ★ 新增：用來記錄試算表原本的排序號碼
+                    
                     for (let i = 0; i < templateChunks.length; i++) {
                         const batch = writeBatch(db);
                         templateChunks[i].forEach(t => {
-                            // 🚧 防護機制：把品項名稱裡的斜線 (/) 換成減號 (-)，避免 Firebase 當成資料夾！
                             const safeItem = (t.item || "").replace(/\//g, '-');
                             const docRef = doc(db, 'inventory_template', `${t.baseName}_${t.deptName}_${safeItem}`);
+                            t.order = orderIndex++; // ★ 將排序號碼一起存入 Firebase
                             batch.set(docRef, t);
                         });
                         await batch.commit();
                     }
+                    
+                    showToast("✅ 設定同步完成！正在重新載入畫面...");
+                    
+                    // 重整畫面
+                    await backgroundSync(false);
+                } else {
+                    showMessage("從試算表抓到的設定是空的！\n請檢查您的 Google Apps Script (.gs) 檔案。");
                 }
-
-                // 2. 寫入所有歷史紀錄
-                if (data.records && data.records.length > 0) {
-                    const recordChunks = chunkArray(data.records, 450);
-                    for (let i = 0; i < recordChunks.length; i++) {
-                        const batch = writeBatch(db);
-                        recordChunks[i].forEach(r => {
-                            const countStr = (r.count !== undefined && r.count !== null) ? String(r.count) : "";
-                            const doubleCountStr = (r.doubleCount !== undefined && r.doubleCount !== null) ? String(r.doubleCount) : "";
-                            
-                            // 🚧 防護機制：把品項名稱裡的斜線 (/) 換成減號 (-)
-                            const safeItem = (r.item || "").replace(/\//g, '-');
-                            const docRef = doc(db, 'inventory_records', `${r.date}_${r.hotel}_${safeItem}`);
-                            
-                            batch.set(docRef, {
-                                date: r.date || "",
-                                hotel: r.hotel || "",
-                                item: r.item || "",
-                                count: countStr,
-                                note: r.note || "",
-                                signature: r.signature || "",
-                                doubleCount: doubleCountStr,
-                                doubleSignature: r.doubleSignature || "",
-                                doubleSignDate: r.doubleSignDate || "",
-                                timestamp: new Date().toLocaleString() 
-                            });
-                        });
-                        await batch.commit();
-                    }
-                }
-
-                // 註記已搬家成功，永久隱藏按鈕
-                localStorage.setItem('firebase_migrated', 'true');
-                document.getElementById('migrationContainer').classList.add('hidden');
-                
-                showToast("🚀 搬家大成功！系統已全面升級 Firebase！");
-                // 重新載入新資料庫
-                init(true);
-
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
-                // 顯示精確的錯誤訊息給我們看
-                showMessage("搬家失敗，原因如下：\n\n" + e.message + "\n\n👉 (如果是 missing permissions，代表 Firebase 規則沒有發布成功喔！)");
-                btn.innerText = "重新嘗試搬家";
+                showMessage("同步設定失敗，請確認網路或稍後再試！\n錯誤訊息：" + e.message);
+            } finally {
+                btn.innerText = originalText;
                 btn.disabled = false;
             }
         }
@@ -427,12 +385,6 @@
         // ==========================================
         async function backgroundSync(isManual = false) {
             try {
-                // 如果連搬家都還沒搬，就不要浪費時間去 Firebase 抓空資料
-                if(!localStorage.getItem('firebase_migrated')) {
-                    if(isManual) showMessage("請先點擊黃色按鈕完成「一鍵搬家」喔！");
-                    return;
-                }
-
                 const indicator = document.getElementById('syncIndicator');
                 if(indicator) {
                     indicator.classList.remove('opacity-0');
@@ -447,6 +399,9 @@
                 templateSnap.forEach(doc => newMasterData.push(doc.data()));
                 
                 if (newMasterData.length > 0) {
+                    // ★ 新增：讀取出來後，依照試算表的原本順序號碼重新排隊！
+                    newMasterData.sort((a, b) => (a.order || 0) - (b.order || 0));
+                    
                     masterData = newMasterData;
                     hotelStructure = {};
                     allBaseHotels = [];
@@ -461,6 +416,8 @@
                             hotelStructure[base].push(dept);
                         }
                     });
+                } else if(isManual) {
+                    showMessage("Firebase 中沒有飯店設定檔！\n👉 請先點擊上方的【⚙️ 更新試算表設定】按鈕。");
                 }
                 
                 // 2. 瞬間抓取盤點紀錄
@@ -541,17 +498,15 @@
                     
                     renderHome();
                 } else {
-                    document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-blue-600 font-bold text-2xl animate-pulse">👉 請點擊上方的「一鍵搬家」按鈕<br>系統將會開始運作</div>`;
+                    document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-gray-500 font-bold text-2xl animate-pulse">👉 如果看不到飯店清單<br>請點擊上方的【⚙️ 更新試算表設定】</div>`;
                 }
             } catch (e) {
                 console.log("快取讀取失敗", e);
             }
             
             // 背景抓取 Firebase 最新資料
-            if(localStorage.getItem('firebase_migrated')) {
-                backgroundSync(false);
-                startAutoSync();
-            }
+            backgroundSync(false);
+            startAutoSync();
         }
 
         function renderHome() {
