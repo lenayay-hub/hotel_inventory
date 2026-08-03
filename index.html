@@ -1,3 +1,4 @@
+程式碼片段
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -425,15 +426,13 @@
                     
                     let targetItems = [];
                     let canCheck = false;
-                    let triggeredDocDate = "";
                     
-                    // ★ 防護邏輯更新：確保有品項可以檢查
+                    // 找出要檢查的必備品項 (枕套之後)
                     if (targetDept === "房務") {
                         let pillowIdx = templateItems.indexOf("枕套");
                         if (pillowIdx !== -1) {
                             targetItems = templateItems.slice(pillowIdx + 1);
                         } else {
-                            // 如果這間飯店的房務「沒有設定枕套」，就自動降級為檢查「全部品項」
                             targetItems = [...templateItems];
                         }
                         canCheck = true;
@@ -443,17 +442,40 @@
                     }
                     
                     if (canCheck) {
-                        // ★ 刪除混亂的跨日邏輯，回歸「單日嚴格檢查」：只看儀表板選定日期的資料
+                        // ★ 新版嚴格亮燈邏輯：必須所有規定品項(含今日新增)都有複點簽名，且「最後一個簽名」落在此日期
                         const todayInputs = (userInputs[targetDate] && userInputs[targetDate][fullHotelName]) || {};
                         const customItems = Object.keys(todayInputs).filter(item => !templateItems.includes(item));
                         let allItemsToCheck = targetItems.concat(customItems);
                         
                         if (allItemsToCheck.length > 0) {
-                            isOrange = allItemsToCheck.every(item => {
-                                let u = todayInputs[item];
-                                // 必須要有「複點簽名」才算完成
-                                return u && u.doubleSignature;
-                            });
+                            let isAllSigned = true;
+                            let latestCompletionDateStr = "";
+
+                            for (let item of allItemsToCheck) {
+                                let latestRecordDate = "";
+                                // 翻遍所有日期，找這個品項最後一次被複點的時間
+                                for (let d in userInputs) {
+                                    let u = (userInputs[d][fullHotelName] && userInputs[d][fullHotelName][item]);
+                                    if (u && u.doubleSignature) {
+                                        // 相容舊資料，若無精準時間，以歸屬日當天晚上23:59:59代替
+                                        let signDate = u.doubleSignDate || (d + " 23:59:59"); 
+                                        if (signDate > latestRecordDate) {
+                                            latestRecordDate = signDate;
+                                        }
+                                    }
+                                }
+
+                                if (latestRecordDate === "") {
+                                    isAllSigned = false; // 只要有一個品項沒被簽過，就不亮燈
+                                    break;
+                                }
+                                if (latestRecordDate > latestCompletionDateStr) {
+                                    latestCompletionDateStr = latestRecordDate;
+                                }
+                            }
+
+                            // 全部品項都簽完，且「最後一次完成的時間」正好落在儀表板選擇的日期上，才亮燈
+                            isOrange = isAllSigned && latestCompletionDateStr.startsWith(targetDate);
                         }
                     }
 
