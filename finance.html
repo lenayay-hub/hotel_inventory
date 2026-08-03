@@ -99,7 +99,7 @@
 <body>
 
     <div class="no-print control-panel">
-        <h2 class="panel-title">百麒物流 💼 財務多維結帳系統</h2>
+        <h2 class="panel-title">百麒物流 💼 財務多維結帳系統 (極速版)</h2>
         
         <div class="flex-row">
             <span style="font-weight: bold; font-size: 16px;">結帳區間設定：</span>
@@ -142,13 +142,31 @@
         <div class="msg-box no-print text-gray-500">請設定區間、勾選上方飯店後，點擊「載入報表」按鈕</div>
     </div>
 
-    <script>
+    <!-- ★ 引入 Firebase 模組 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+        import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+        // ★ 您的 Firebase 金鑰
+        const firebaseConfig = {
+            apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
+            authDomain: "hotel-inventory-3a1ad.firebaseapp.com",
+            projectId: "hotel-inventory-3a1ad",
+            storageBucket: "hotel-inventory-3a1ad.firebasestorage.app",
+            messagingSenderId: "363844184412",
+            appId: "1:363844184412:web:66cdd6425d53bde75f3999",
+            measurementId: "G-NM1W9JT70F"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // 試算表仍作為單價來源
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
 
         // ==========================================
         // 🏨 內建專屬的兩大結帳群組名單
         // ==========================================
-        // 💡 如果未來有新增，只要照著格式打字加在陣列裡面就可以了！
         const group25 = [
             "良一", "良西", "良站前", "英迪格", "富野", "富汽", "富野制服",
             "然一-房務", "然一-餐廳", "H2O-行政", "H2O-房務", "H2O-西餐", "H2O-中餐",
@@ -171,6 +189,16 @@
         let currentReportData = [];
         let globalItemOrder = {}; 
 
+        // 綁定到全域以便 HTML 呼叫
+        window.checkGroup = checkGroup;
+        window.clearChecks = clearChecks;
+        window.filterCheckboxes = filterCheckboxes;
+        window.selectAllVisible = selectAllVisible;
+        window.fetchData = fetchData;
+        window.exportToExcel = exportToExcel;
+        window.updateQty = updateQty;
+        window.updateNote = updateNote;
+
         function formatMoney(num) {
             return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
@@ -183,16 +211,18 @@
             document.getElementById('endDatePicker').value = today.toISOString().split('T')[0];
             document.getElementById('printHeader').style.display = 'none'; 
             
-            // 一開網頁就自動去後台拿所有部門名單，畫成勾選框
             await loadTemplateCheckboxes();
         };
 
+        // ★ 極速版：從 Firebase 載入名單
         async function loadTemplateCheckboxes() {
             const container = document.getElementById('checkboxContainer');
             try {
-                const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
-                const data = await res.json();
-                let template = data.template || [];
+                const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
+                let template = [];
+                if (templateDoc.exists() && templateDoc.data().items) {
+                    template = templateDoc.data().items;
+                }
 
                 globalItemOrder = {};
                 let uniqueHotels = new Set();
@@ -214,7 +244,6 @@
             }
         }
 
-        // --- 核取方塊操作邏輯 ---
         function filterCheckboxes() {
             const keyword = document.getElementById('cbSearch').value.toLowerCase().replace(/\s+/g, '');
             const labels = document.querySelectorAll('.cb-label');
@@ -243,52 +272,84 @@
         }
 
         function checkGroup(type) {
-            clearChecks(); // 先清空，避免名單混雜
+            clearChecks(); 
             const listToMatch = type === '25' ? group25 : groupEnd;
             const cbs = document.querySelectorAll('.hotel-cb');
 
             cbs.forEach(cb => {
-                // 將後台傳來的 "H2O 房務" 正規化為 "H2O房務"
                 let val = cb.value.replace(/\s+/g, '').replace(/-/g, '');
                 
                 let shouldCheck = listToMatch.some(item => {
                     let normalizedItem = item.replace(/\s+/g, '').replace(/-/g, '');
-                    // 只要飯店名字包含關鍵字，或是關鍵字包含飯店名字，就自動打勾
                     return val === normalizedItem || val.includes(normalizedItem);
                 });
                 if (shouldCheck) cb.checked = true;
             });
         }
-        // -------------------------
 
+        // ★ 極速版：從 Firebase 抓物流結帳紀錄，單價依然從 Google 試算表抓
         async function fetchData() {
             const startDate = document.getElementById('startDatePicker').value;
             const endDate = document.getElementById('endDatePicker').value;
             
-            // 抓出所有有打勾的飯店，組成逗號分隔字串給大腦
-            const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value).join(',');
+            const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value);
             
-            if (selectedHotels === "") {
-                if(!confirm("⚠️ 您尚未勾選任何飯店！\n\n按下「確定」將載入【全部】飯店資料（如果單量很多，這可能需要幾十秒的時間）。\n按下「取消」返回先勾選飯店。")) return;
+            if (selectedHotels.length === 0) {
+                if(!confirm("⚠️ 您尚未勾選任何飯店！\n\n按下「確定」將載入【全部】飯店資料（如果單量很多，這可能需要一點時間）。\n按下「取消」返回先勾選飯店。")) return;
             }
 
             const container = document.getElementById('resultsContainer');
             
             document.getElementById('printHeader').style.display = 'block';
             document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate}`;
-            container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 正在跨部門抓取資料與計算中... 請稍候</div>`;
+            container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 正在跨部門極速抓取資料與計算中... 請稍候</div>`;
             
             try {
-                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels)}&t=${new Date().getTime()}`);
-                const data = await res.json();
+                // 1. 從 Firebase 抓取當月單據
+                const logQ = query(collection(db, "logistics_records"), 
+                                   where("date", ">=", startDate), 
+                                   where("date", "<=", endDate));
+                const logSnap = await getDocs(logQ);
 
-                if(!data.records || data.records.length === 0) {
+                let fbRecords = [];
+                logSnap.forEach(docSnap => {
+                    let d = docSnap.data();
+                    
+                    // 必須雙方簽章才算結帳單
+                    if (!d.clientSig || !d.driverSig) return;
+                    
+                    // 重組名稱使其與「價格總表」一致
+                    let deptStr = d.hotelKeyword === d.deptName ? d.hotelKeyword : `${d.hotelKeyword} ${d.deptName}`;
+                    if(d.deptName && d.deptName.includes(d.hotelKeyword)) deptStr = d.deptName;
+
+                    // 過濾所選飯店
+                    if (selectedHotels.length > 0) {
+                        let match = selectedHotels.some(h => deptStr.includes(h) || h.includes(deptStr) || d.hotelKeyword.includes(h));
+                        if (!match) return;
+                    }
+
+                    fbRecords.push({
+                        verifyJson: JSON.stringify(d.items || []),
+                        clientSig: d.clientSig,
+                        driverSig: d.driverSig,
+                        date: d.date,
+                        dept: deptStr
+                    });
+                });
+
+                if(fbRecords.length === 0) {
                     container.innerHTML = `<div class="msg-box no-print" style="color: red;">此條件下找不到任何已雙方簽收的點交紀錄。</div>`;
                     return;
                 }
+
+                // 2. 向 Google Apps Script 抓取「價格總表」 (確保單價隨時是最新)
+                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels.join(','))}&t=${new Date().getTime()}`);
+                const data = await res.json();
                 
-                processData(data.records, data.prices || {});
+                processData(fbRecords, data.prices || {});
+
             } catch(err) {
+                console.error(err);
                 container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：請檢查網路連線</div>`;
             }
         }
@@ -300,12 +361,11 @@
                 let items = [];
                 try { items = JSON.parse(record.verifyJson); } catch(e) { return; }
                 
-                if (!record.clientSig || !record.driverSig) return;
-
                 let dateStr = record.date || "";
                 let deptStr = record.dept || record.deptName || "";
 
                 items.forEach((item) => {
+                    // Firebase 存進來的 actualQty 即為物流結帳數量
                     let actualQty = parseInt(item.actualQty) || 0;
                     if (actualQty === 0) return; 
 
