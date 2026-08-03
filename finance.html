@@ -295,68 +295,70 @@
         }
 
         // ==========================================
-        // ★ 終極防護網：強制清除所有非法斜線字元，精準報錯
+        // ★ 補救機制：從 Google 試算表強制把舊的物流簽名吸進 Firebase
         // ==========================================
         async function syncLogisticsFromGoogleSheet() {
             const startDate = document.getElementById('startDatePicker').value;
             const endDate = document.getElementById('endDatePicker').value;
-            const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value).join(',');
+            const selectedHotelsArray = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value);
 
-            if (!selectedHotels) {
-                alert("⚠️ 錯誤：請先勾選您想吸取舊資料的飯店！\n（💡 建議：直接點擊上方的『一鍵全選』按鈕，一次全部吸過來最保險！）");
+            if (selectedHotelsArray.length === 0) {
+                alert("⚠️ 錯誤：請先勾選您想吸取舊資料的飯店！\n（💡 建議：一次勾選少數幾間就好，或者系統會自動分批幫您抓！）");
                 return;
             }
 
             const btn = document.getElementById('syncLogisticsBtn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = "⏳ 正在跨海吸取舊簽名中... (請勿關閉網頁)";
+            btn.innerHTML = "⏳ 正在跨海吸取中... (資料龐大請稍候)";
             btn.disabled = true;
 
             try {
-                // 1. 去 Google 試算表抓舊的結帳資料
-                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels)}&t=${new Date().getTime()}`);
-                const data = await res.json();
+                let allRecords = [];
+                const chunkSize = 5; // ★ 防當機機制：每次只向 Google 要 5 間飯店的資料
 
-                if (data.status === "error" || data.error) {
-                    throw new Error(data.message || data.error || "Google 試算表端發生未知錯誤");
+                // 分批去 Google 試算表抓舊的結帳資料
+                for (let i = 0; i < selectedHotelsArray.length; i += chunkSize) {
+                    const batchHotels = selectedHotelsArray.slice(i, i + chunkSize).join(',');
+                    btn.innerHTML = `⏳ 正在吸取第 ${Math.floor(i/chunkSize)+1} 批資料...`;
+                    
+                    const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(batchHotels)}&t=${new Date().getTime()}`);
+                    const data = await res.json();
+
+                    if (data.status === "error" || data.error) {
+                        throw new Error(data.message || data.error || "Google 試算表端發生未知錯誤");
+                    }
+                    if (data.records) {
+                        allRecords = allRecords.concat(data.records);
+                    }
                 }
 
-                if (data.records && data.records.length > 0) {
+                if (allRecords.length > 0) {
                     const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
-                    const recordChunks = chunkArray(data.records, 450);
+                    const recordChunks = chunkArray(allRecords, 450);
 
                     let totalImported = 0;
 
-                    // 2. 一批一批寫入 Firebase 的 logistics_records
+                    // 一批一批寫入 Firebase 的 logistics_records
                     for (let i = 0; i < recordChunks.length; i++) {
                         const batch = writeBatch(db);
                         recordChunks[i].forEach(r => {
-                            // 只有包含簽名的才算物流點收紀錄，才需要搬
                             if (!r.clientSig && !r.driverSig) return; 
 
-                            // ★ 終極防呆：徹底剔除所有日期、飯店、部門名稱裡的斜線與非法符號
-                            let dateStr = String(r.date || "").replace(/\//g, '-').trim();
-                            let deptStr = String(r.dept || r.deptName || "").replace(/\//g, '-').trim();
-                            let hotelKw = String(r.hotelKeyword || deptStr.split(/[ -]/)[0] || deptStr).replace(/\//g, '-').trim();
-
+                            let dateStr = r.date || "";
+                            let deptStr = r.dept || r.deptName || "";
+                            let hotelKw = r.hotelKeyword || deptStr.split(/[ -]/)[0] || deptStr;
                             let items = [];
-                            try { 
-                                if (r.verifyJson) {
-                                    items = typeof r.verifyJson === 'string' ? JSON.parse(r.verifyJson) : r.verifyJson; 
-                                }
-                            } catch(e) { console.log("JSON 轉換略過"); }
+                            try { items = JSON.parse(r.verifyJson); } catch(e) { }
 
-                            // 產生絕對安全的 docId
-                            const rawDocId = `${dateStr}_${hotelKw}_${deptStr}`;
-                            const docId = rawDocId.replace(/[\/\\?%*:|"<>]/g, '-');
-                            
+                            // 清除斜線等非法字元防當機
+                            const docId = `${dateStr}_${hotelKw}_${deptStr}`.replace(/[\/\\?%*:|"<>]/g, '-');
                             const docRef = doc(db, 'logistics_records', docId);
 
                             batch.set(docRef, {
                                 date: dateStr,
                                 hotelKeyword: hotelKw,
                                 deptName: deptStr,
-                                items: Array.isArray(items) ? items : [],
+                                items: items,
                                 clientSig: r.clientSig || "",
                                 driverSig: r.driverSig || "",
                                 timestamp: new Date().toLocaleString()
@@ -369,12 +371,11 @@
                     
                     alert(`✅ 搬家大成功！\n成功將 ${totalImported} 筆「舊物流簽名與點收紀錄」吸入 Firebase 極速資料庫！\n\n現在請點擊藍色的「載入報表」，您就會看到以前的單據通通回來了！`);
                 } else {
-                    alert("⚠️ 試算表中沒有符合此區間與飯店的舊物流簽名資料喔！\n(也可能是您選的日期區間內，剛好沒有已簽章的單據)");
+                    alert("⚠️ 試算表中沒有符合此區間與飯店的舊物流簽名資料喔！");
                 }
             } catch (error) {
                 console.error(error);
-                // ★ 精準報錯，讓老闆一眼看出哪裡卡住
-                alert("❌ 吸取失敗！\n\n系統回報原因：" + error.message + "\n\n👉 請將這個畫面截圖傳給我，我們一秒抓出蟲！");
+                alert("❌ 吸取失敗，原因：\n" + error.message + "\n\n💡 建議測試：請重新整理網頁，先試著『只勾選 1 間飯店』按吸取看看！");
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -385,7 +386,6 @@
         async function fetchData() {
             const startDate = document.getElementById('startDatePicker').value;
             const endDate = document.getElementById('endDatePicker').value;
-            
             const selectedHotels = Array.from(document.querySelectorAll('.hotel-cb:checked')).map(cb => cb.value);
             
             if (selectedHotels.length === 0) {
@@ -393,7 +393,6 @@
             }
 
             const container = document.getElementById('resultsContainer');
-            
             document.getElementById('printHeader').style.display = 'block';
             document.getElementById('printInfo').innerText = `結算區間：${startDate} 至 ${endDate}`;
             container.innerHTML = `<div class="msg-box no-print" style="color: #2563eb;">⚙️ 正在跨部門極速抓取資料與計算中... 請稍候</div>`;
@@ -437,14 +436,24 @@
                 }
 
                 // 2. 向 Google Apps Script 抓取「價格總表」 (確保單價隨時是最新)
-                const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels.join(','))}&t=${new Date().getTime()}`);
-                const data = await res.json();
+                let combinedPrices = {};
+                let targetHotels = selectedHotels.length > 0 ? selectedHotels : ["全部"];
+                const chunkSize = 5; // ★ 防當機機制：分批向 Google 抓取價格表
+
+                for (let i = 0; i < targetHotels.length; i += chunkSize) {
+                    const batchHotels = targetHotels.slice(i, i + chunkSize).join(',');
+                    const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(batchHotels)}&t=${new Date().getTime()}`);
+                    const data = await res.json();
+                    if (data.prices) {
+                        Object.assign(combinedPrices, data.prices);
+                    }
+                }
                 
-                processData(fbRecords, data.prices || {});
+                processData(fbRecords, combinedPrices);
 
             } catch(err) {
                 console.error(err);
-                container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：請檢查網路連線</div>`;
+                container.innerHTML = `<div class="msg-box no-print" style="color: red;">讀取失敗：請檢查網路連線或減少勾選的飯店數量再試一次。</div>`;
             }
         }
 
