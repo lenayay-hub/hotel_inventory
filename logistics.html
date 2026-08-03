@@ -74,8 +74,24 @@
         </div>
     </div>
 
-    <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
+    <!-- ★ 引入 Firebase 模組 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+        import { getFirestore, collection, query, where, getDocs, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+        // ★ 您的 Firebase 金鑰
+        const firebaseConfig = {
+            apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
+            authDomain: "hotel-inventory-3a1ad.firebaseapp.com",
+            projectId: "hotel-inventory-3a1ad",
+            storageBucket: "hotel-inventory-3a1ad.firebasestorage.app",
+            messagingSenderId: "363844184412",
+            appId: "1:363844184412:web:66cdd6425d53bde75f3999",
+            measurementId: "G-NM1W9JT70F"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
         
         let currentHotel = "";
         let currentDate = "";
@@ -87,6 +103,14 @@
         const driverCanvas = document.getElementById('driverCanvas');
         const clientCtx = clientCanvas.getContext('2d');
         const driverCtx = driverCanvas.getContext('2d');
+
+        // 將內部函數綁定到 window 讓 HTML 標籤可以呼叫
+        window.dateChanged = dateChanged;
+        window.clearCanvas = clearCanvas;
+        window.openSignModal = openSignModal;
+        window.closeSignModal = closeSignModal;
+        window.submitVerify = submitVerify;
+        window.handleQtyChange = handleQtyChange;
 
         const loadingHtml = `
             <div class="flex flex-col items-center justify-center py-12 space-y-4">
@@ -139,35 +163,102 @@
             groupedData = {}; 
 
             try {
-                const templatePromise = fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`).then(res => res.json());
-                const dataPromise = fetch(`${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`).then(res => res.json());
-
-                const [tempData, rawData] = await Promise.all([templatePromise, dataPromise]);
-
-                let template = tempData.template || [];
-                template.forEach((t, idx) => {
-                    if (globalItemOrder[t.item] === undefined) {
-                        globalItemOrder[t.item] = idx; 
-                    }
-                });
-
-                processAndRenderData(rawData);
+                // 1. 從 Firebase 抓取排序用的總表範本
+                const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
+                if (templateDoc.exists() && templateDoc.data().items) {
+                    templateDoc.data().items.forEach((t, idx) => {
+                        if (globalItemOrder[t.item] === undefined) {
+                            globalItemOrder[t.item] = idx; 
+                        }
+                    });
+                }
+                
+                // 2. 抓取點交資料
+                await fetchData();
 
             } catch(err) {
+                console.error(err);
                 document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路連線</div>`;
             }
         }
 
+        // 核心：從 Firebase 組合今日盤點與物流紀錄
         async function fetchData() {
             document.getElementById('departmentsContainer').innerHTML = loadingHtml.replace("雲端資料同步中...", "切換日期讀取中...");
             groupedData = {}; 
 
             try {
-                let fetchUrl = `${API_URL}?action=getLogisticsData&date=${currentDate}&hotel=${currentHotel}&t=${new Date().getTime()}`;
-                const res = await fetch(fetchUrl);
-                const rawData = await res.json();
+                let rawData = [];
+                let baseInventoryItems = [];
+
+                // 1. 抓取阿姨今日盤點輸入的紀錄 (作為預設出貨單)
+                const invQ = query(collection(db, "inventory_records"), where("date", "==", currentDate));
+                const invSnap = await getDocs(invQ);
+
+                invSnap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    if (d.hotel && d.hotel.includes(currentHotel)) {
+                        // 嘗試從 "H2O 房務" 中提取出 "房務"
+                        let deptName = d.hotel.replace(currentHotel, "").trim();
+                        if (deptName === "") deptName = "房務"; // 預設歸類
+                        
+                        baseInventoryItems.push({
+                            deptName: deptName,
+                            itemName: d.item,
+                            // 優先取複點數量作為出貨數量
+                            originalQty: d.doubleCount || d.count || "0",
+                            auntNote: d.note || ""
+                        });
+                    }
+                });
+
+                // 2. 抓取物流端是否已經存過紀錄與簽名
+                const logQ = query(collection(db, "logistics_records"), where("date", "==", currentDate), where("hotelKeyword", "==", currentHotel));
+                const logSnap = await getDocs(logQ);
+                let savedLogistics = {};
+                
+                logSnap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    savedLogistics[d.deptName] = d;
+                });
+
+                // 3. 把兩邊資料合併
+                baseInventoryItems.forEach(item => {
+                    let savedDept = savedLogistics[item.deptName];
+                    let actualQty = item.originalQty;
+                    let driverNote = "";
+                    let clientSig = "";
+                    let driverSig = "";
+
+                    if (savedDept) {
+                        clientSig = savedDept.clientSig || "";
+                        driverSig = savedDept.driverSig || "";
+                        if (savedDept.items) {
+                            let savedItem = savedDept.items.find(i => i.itemName === item.itemName);
+                            if (savedItem) {
+                                if (savedItem.actualQty !== undefined && savedItem.actualQty !== "") {
+                                    actualQty = savedItem.actualQty;
+                                }
+                                driverNote = savedItem.driverNote || "";
+                            }
+                        }
+                    }
+
+                    rawData.push({
+                        deptName: item.deptName,
+                        itemName: item.itemName,
+                        originalQty: item.originalQty,
+                        auntNote: item.auntNote,
+                        actualQty: actualQty,
+                        driverNote: driverNote,
+                        clientSig: clientSig,
+                        driverSig: driverSig
+                    });
+                });
+
                 processAndRenderData(rawData);
             } catch (err) {
+                console.error(err);
                 document.getElementById('departmentsContainer').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">讀取失敗：請檢查網路連線</div>`;
             }
         }
@@ -181,7 +272,7 @@
             const cleanData = Object.values(uniqueDataMap);
 
             if (cleanData.length === 0) {
-                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">此日期無待點交資料！</div>';
+                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-gray-500 font-bold text-xl">此日期無待點交資料！<br><span class="text-sm">可能飯店尚未盤點或無此飯店紀錄</span></div>';
                 return;
             }
 
@@ -198,7 +289,6 @@
                 if (item.clientSig) groupedData[item.deptName].clientSig = item.clientSig;
                 if (item.driverSig) groupedData[item.deptName].driverSig = item.driverSig;
 
-                // ★ 核心變更：如果雲端資料沒有 actualQty (第一次開啟時)，直接預設為 originalQty，確保請款必定有依據數字
                 let finalActualQty = (item.actualQty !== undefined && item.actualQty !== "" && item.actualQty !== null) ? item.actualQty : item.originalQty;
 
                 groupedData[item.deptName].items.push({
@@ -212,7 +302,7 @@
             });
 
             if (Object.keys(groupedData).length === 0) {
-                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-xl">🎉 此日期所有品項數量皆為 0，無須點交！</div>';
+                document.getElementById('departmentsContainer').innerHTML = '<div class="text-center py-16 text-green-600 font-bold text-xl">🎉 此日期所有品項出貨量皆為 0，無須點交！</div>';
                 return;
             }
 
@@ -342,7 +432,7 @@
         
         function closeSignModal() { document.getElementById('signModal').classList.add('hidden'); }
 
-        function submitVerify() {
+        async function submitVerify() {
             let cBlank = !clientCtx.getImageData(0,0,clientCanvas.width,clientCanvas.height).data.some(c => c !== 0);
             let dBlank = !driverCtx.getImageData(0,0,driverCanvas.width,driverCanvas.height).data.some(c => c !== 0);
 
@@ -367,22 +457,21 @@
                 itemName: item.itemName,
                 originalQty: item.originalQty,
                 auntNote: item.auntNote,
-                actualQty: item.actualQty, // ★ 這裡已經將「請款數量」準確無誤地帶入了
+                actualQty: item.actualQty, 
                 driverNote: item.driverNote
             }));
 
             payloads.push({
-                type: 'logistics',
+                date: currentDate,
                 hotelKeyword: currentHotel,
                 deptName: activeDeptKey,
-                date: currentDate,
-                verifyJson: JSON.stringify(safeItemsForDatabase),
-                clientSigBase64: cBase64,
-                driverSigBase64: dBase64
+                items: safeItemsForDatabase,
+                clientSig: cBase64,
+                driverSig: dBase64
             });
 
             // 2. 自動同步其他尚未簽名部門
-            if (isNewDriverSig) {
+            if (isNewDriverSig && dBase64 !== "") {
                 for (let dept in groupedData) {
                     if (dept !== activeDeptKey) {
                         let existOtherDriver = groupedData[dept].driverSig;
@@ -396,13 +485,12 @@
                                 driverNote: item.driverNote
                             }));
                             payloads.push({
-                                type: 'logistics',
+                                date: currentDate,
                                 hotelKeyword: currentHotel,
                                 deptName: dept,
-                                date: currentDate,
-                                verifyJson: JSON.stringify(deptItemsSafe),
-                                clientSigBase64: groupedData[dept].clientSig || "", 
-                                driverSigBase64: dBase64 
+                                items: deptItemsSafe,
+                                clientSig: groupedData[dept].clientSig || "", 
+                                driverSig: dBase64 
                             });
                             syncDepts.push(dept);
                         }
@@ -410,15 +498,24 @@
                 }
             }
 
-            // 3. 發送至後台大腦
-            Promise.all(payloads.map(payload => 
-                fetch(API_URL, { 
-                    method: 'POST',
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify(payload) 
-                })
-            ))
-            .then(() => {
+            // 3. 發送至 Firebase 物流專屬資料表
+            try {
+                const savePromises = payloads.map(p => {
+                    const docId = `${p.date}_${p.hotelKeyword}_${p.deptName}`;
+                    const docRef = doc(db, 'logistics_records', docId);
+                    return setDoc(docRef, {
+                        date: p.date,
+                        hotelKeyword: p.hotelKeyword,
+                        deptName: p.deptName,
+                        items: p.items,
+                        clientSig: p.clientSig,
+                        driverSig: p.driverSig,
+                        timestamp: new Date().toLocaleString()
+                    }, { merge: true });
+                });
+
+                await Promise.all(savePromises);
+
                 btn.innerText = "確認送出"; btn.disabled = false;
                 
                 if (clientCanvas.isModified) groupedData[activeDeptKey].clientSig = cBase64;
@@ -438,12 +535,14 @@
                     ? `✅ 已點收，並同步簽名至 ${syncDepts.length} 個部門！` 
                     : "✅ 點收簽單已成功更新！";
                 
-                toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 3000);
-            })
-            .catch(e => {
+                toast.classList.remove('opacity-0'); 
+                setTimeout(() => toast.classList.add('opacity-0'), 3000);
+
+            } catch (e) {
+                console.error(e);
                 btn.innerText = "確認送出"; btn.disabled = false;
                 alert("網路傳送失敗，請確認網路！");
-            });
+            }
         }
 
         init();
