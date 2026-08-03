@@ -425,6 +425,7 @@
                     
                     let targetItems = [];
                     let canCheck = false;
+                    let triggeredDocDate = "";
                     
                     // ★ 防護邏輯更新：確保有品項可以檢查
                     if (targetDept === "房務") {
@@ -442,37 +443,17 @@
                     }
                     
                     if (canCheck) {
-                        for (let docDate in userInputs) {
-                            let inputs = userInputs[docDate][fullHotelName];
-                            if (!inputs) continue;
-
-                            const customItems = Object.keys(inputs).filter(item => !templateItems.includes(item));
-                            let allItemsToCheck = targetItems.concat(customItems);
-                            
-                            if (allItemsToCheck.length > 0) {
-                                let allSigned = true;
-                                let maxSignDate = "";
-                                
-                                for (let item of allItemsToCheck) {
-                                    let u = inputs[item];
-                                    
-                                    if (!u || !u.doubleSignature) {
-                                        allSigned = false;
-                                        break;
-                                    }
-                                    
-                                    let rawSignDate = u.doubleSignDate || docDate;
-                                    let signDateOnly = rawSignDate.substring(0, 10);
-                                    if (signDateOnly > maxSignDate) {
-                                        maxSignDate = signDateOnly;
-                                    }
-                                }
-                                
-                                if (allSigned && maxSignDate !== "" && maxSignDate === targetDate) {
-                                    isOrange = true;
-                                    break; 
-                                }
-                            }
+                        // ★ 刪除混亂的跨日邏輯，回歸「單日嚴格檢查」：只看儀表板選定日期的資料
+                        const todayInputs = (userInputs[targetDate] && userInputs[targetDate][fullHotelName]) || {};
+                        const customItems = Object.keys(todayInputs).filter(item => !templateItems.includes(item));
+                        let allItemsToCheck = targetItems.concat(customItems);
+                        
+                        if (allItemsToCheck.length > 0) {
+                            isOrange = allItemsToCheck.every(item => {
+                                let u = todayInputs[item];
+                                // 必須要有「複點簽名」才算完成
+                                return u && u.doubleSignature;
+                            });
                         }
                     }
 
@@ -498,6 +479,7 @@
         function goToHotel(baseName) {
             currentBaseHotel = baseName;
             
+            // 強制鎖死回到「預設日期規則」，不記憶上次手動改的日期
             document.getElementById('datePicker').value = getTargetDateStr(baseName);
             updateDateDisplay();
 
