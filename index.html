@@ -1,4 +1,3 @@
-程式碼片段
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -441,7 +440,7 @@
                         canCheck = true;
                     }
                     
-                    if (canCheck) {
+                    <comment-tag id="1">if (canCheck) {
                         // ★ 新版嚴格亮燈邏輯：必須所有規定品項(含今日新增)都有複點簽名，且「最後一個簽名」落在此日期
                         const todayInputs = (userInputs[targetDate] && userInputs[targetDate][fullHotelName]) || {};
                         const customItems = Object.keys(todayInputs).filter(item => !templateItems.includes(item));
@@ -477,7 +476,43 @@
                             // 全部品項都簽完，且「最後一次完成的時間」正好落在儀表板選擇的日期上，才亮燈
                             isOrange = isAllSigned && latestCompletionDateStr.startsWith(targetDate);
                         }
-                    }
+                    }</comment-tag id="1" text="if (canCheck) {
+                        // ★ 終極嚴格亮燈邏輯：以「單據 (docDate)」為單位獨立檢查
+                        isOrange = false;
+                        for (let docDate in userInputs) {
+                            let hotelData = userInputs[docDate][fullHotelName];
+                            if (!hotelData) continue; // 這天沒有這間飯店的單，跳過
+
+                            // 針對這張單，找出必備品項 + 臨時新增品項
+                            let customItems = Object.keys(hotelData).filter(item => !templateItems.includes(item));
+                            let allItemsToCheck = targetItems.concat(customItems);
+
+                            if (allItemsToCheck.length > 0) {
+                                let isAllSigned = true;
+                                let latestSignDate = '';
+
+                                for (let item of allItemsToCheck) {
+                                    let u = hotelData[item];
+                                    // 只要這張單裡有一個品項沒紀錄或沒複點，這張單就不算完工
+                                    if (!u || !u.doubleSignature) {
+                                        isAllSigned = false;
+                                        break; 
+                                    }
+                                    // 記錄這張單最後一個簽名的時間
+                                    let signDateStr = u.doubleSignDate || (docDate + ' 23:59:59');
+                                    if (signDateStr > latestSignDate) {
+                                        latestSignDate = signDateStr;
+                                    }
+                                }
+
+                                // 如果【這張單】全部完工了，而且最後完工時間剛好是儀表板上的「今天」
+                                if (isAllSigned && latestSignDate.startsWith(targetDate)) {
+                                    isOrange = true;
+                                    break; // 只要有一張單在今天完工，就亮燈！
+                                }
+                            }
+                        }
+                    }" type="suggestion">
 
                     let btnClasses = isOrange 
                         ? "bg-orange-500 border-2 border-orange-600 shadow-lg active:bg-orange-600 text-white" 
