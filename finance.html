@@ -295,7 +295,7 @@
         }
 
         // ==========================================
-        // ★ 補救機制：從 Google 試算表強制把舊的物流簽名吸進 Firebase
+        // ★ 終極防護網：強制清除所有非法斜線字元，精準報錯
         // ==========================================
         async function syncLogisticsFromGoogleSheet() {
             const startDate = document.getElementById('startDatePicker').value;
@@ -309,13 +309,17 @@
 
             const btn = document.getElementById('syncLogisticsBtn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = "⏳ 正在跨海吸取舊簽名中...";
+            btn.innerHTML = "⏳ 正在跨海吸取舊簽名中... (請勿關閉網頁)";
             btn.disabled = true;
 
             try {
                 // 1. 去 Google 試算表抓舊的結帳資料
                 const res = await fetch(`${API_URL}?action=getFinanceData&startDate=${startDate}&endDate=${endDate}&hotel=${encodeURIComponent(selectedHotels)}&t=${new Date().getTime()}`);
                 const data = await res.json();
+
+                if (data.status === "error" || data.error) {
+                    throw new Error(data.message || data.error || "Google 試算表端發生未知錯誤");
+                }
 
                 if (data.records && data.records.length > 0) {
                     const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
@@ -330,24 +334,29 @@
                             // 只有包含簽名的才算物流點收紀錄，才需要搬
                             if (!r.clientSig && !r.driverSig) return; 
 
-                            let dateStr = r.date || "";
-                            let deptStr = r.dept || r.deptName || "";
-                            
-                            // 嘗試從 "H2O 房務" 中還原出 hotelKeyword "H2O"
-                            let hotelKw = r.hotelKeyword || deptStr.split(/[ -]/)[0] || deptStr;
+                            // ★ 終極防呆：徹底剔除所有日期、飯店、部門名稱裡的斜線與非法符號
+                            let dateStr = String(r.date || "").replace(/\//g, '-').trim();
+                            let deptStr = String(r.dept || r.deptName || "").replace(/\//g, '-').trim();
+                            let hotelKw = String(r.hotelKeyword || deptStr.split(/[ -]/)[0] || deptStr).replace(/\//g, '-').trim();
 
                             let items = [];
-                            try { items = JSON.parse(r.verifyJson); } catch(e) { }
+                            try { 
+                                if (r.verifyJson) {
+                                    items = typeof r.verifyJson === 'string' ? JSON.parse(r.verifyJson) : r.verifyJson; 
+                                }
+                            } catch(e) { console.log("JSON 轉換略過"); }
 
-                            // 產生對應物流的 docId
-                            const docId = `${dateStr}_${hotelKw}_${deptStr}`;
+                            // 產生絕對安全的 docId
+                            const rawDocId = `${dateStr}_${hotelKw}_${deptStr}`;
+                            const docId = rawDocId.replace(/[\/\\?%*:|"<>]/g, '-');
+                            
                             const docRef = doc(db, 'logistics_records', docId);
 
                             batch.set(docRef, {
                                 date: dateStr,
                                 hotelKeyword: hotelKw,
                                 deptName: deptStr,
-                                items: items,
+                                items: Array.isArray(items) ? items : [],
                                 clientSig: r.clientSig || "",
                                 driverSig: r.driverSig || "",
                                 timestamp: new Date().toLocaleString()
@@ -360,11 +369,12 @@
                     
                     alert(`✅ 搬家大成功！\n成功將 ${totalImported} 筆「舊物流簽名與點收紀錄」吸入 Firebase 極速資料庫！\n\n現在請點擊藍色的「載入報表」，您就會看到以前的單據通通回來了！`);
                 } else {
-                    alert("⚠️ 試算表中沒有符合此區間與飯店的舊物流簽名資料喔！");
+                    alert("⚠️ 試算表中沒有符合此區間與飯店的舊物流簽名資料喔！\n(也可能是您選的日期區間內，剛好沒有已簽章的單據)");
                 }
             } catch (error) {
                 console.error(error);
-                alert("❌ 吸取失敗，請確認網路狀態。");
+                // ★ 精準報錯，讓老闆一眼看出哪裡卡住
+                alert("❌ 吸取失敗！\n\n系統回報原因：" + error.message + "\n\n👉 請將這個畫面截圖傳給我，我們一秒抓出蟲！");
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
