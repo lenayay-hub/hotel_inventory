@@ -188,7 +188,7 @@
     <!-- ★ 引入 Firebase 模組 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getFirestore, collection, doc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, getDocs, writeBatch, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
@@ -256,7 +256,7 @@
         window.handleItemClick = handleItemClick;
         window.syncSettingsFromSheet = syncSettingsFromSheet;
 
-        // ★ 新增功能：從 Google 試算表強制抓取最新「設定檔」並寫入 Firebase
+        // ★ 核心修正：直接把整個飯店清單「打包成一本目錄」鎖進 Firebase，100% 保證順序絕不錯亂！
         async function syncSettingsFromSheet(event) {
             const btn = event.currentTarget;
             const originalText = btn.innerText;
@@ -270,21 +270,10 @@
 
                 if (data.template && data.template.length > 0) {
                     btn.innerText = "⏳ 寫入Firebase...";
-                    const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
-                    const templateChunks = chunkArray(data.template, 450);
                     
-                    let orderIndex = 0; // ★ 新增：用來記錄試算表原本的排序號碼
-                    
-                    for (let i = 0; i < templateChunks.length; i++) {
-                        const batch = writeBatch(db);
-                        templateChunks[i].forEach(t => {
-                            const safeItem = (t.item || "").replace(/\//g, '-');
-                            const docRef = doc(db, 'inventory_template', `${t.baseName}_${t.deptName}_${safeItem}`);
-                            t.order = orderIndex++; // ★ 將排序號碼一起存入 Firebase
-                            batch.set(docRef, t);
-                        });
-                        await batch.commit();
-                    }
+                    // 打包存入單一文件，保留絕對的陣列順序
+                    const docRef = doc(db, 'inventory_config', 'master_template');
+                    await setDoc(docRef, { items: data.template });
                     
                     showToast("✅ 設定同步完成！正在重新載入畫面...");
                     
@@ -393,16 +382,11 @@
 
                 if(isManual) showToast("🔄 極速同步中...");
 
-                // 1. 瞬間抓取飯店結構
-                const templateSnap = await getDocs(collection(db, 'inventory_template'));
-                let newMasterData = [];
-                templateSnap.forEach(doc => newMasterData.push(doc.data()));
+                // 1. 瞬間抓取「打包好」的飯店結構 (保證絕對順序)
+                const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
                 
-                if (newMasterData.length > 0) {
-                    // ★ 新增：讀取出來後，依照試算表的原本順序號碼重新排隊！
-                    newMasterData.sort((a, b) => (a.order || 0) - (b.order || 0));
-                    
-                    masterData = newMasterData;
+                if (templateDoc.exists() && templateDoc.data().items) {
+                    masterData = templateDoc.data().items;
                     hotelStructure = {};
                     allBaseHotels = [];
                     masterData.forEach(t => {
@@ -531,7 +515,8 @@
                     let canCheck = false;
                     
                     if (targetDept === "房務") {
-                        let pillowIdx = templateItems.indexOf("枕套");
+                        // 強化搜尋，防止空白字元干擾
+                        let pillowIdx = templateItems.findIndex(i => (i || "").trim() === "枕套");
                         if (pillowIdx !== -1) {
                             targetItems = templateItems.slice(pillowIdx + 1);
                         } else {
