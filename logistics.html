@@ -26,8 +26,13 @@
         <!-- 頂部資訊區 -->
         <div class="bg-blue-800 text-white p-5 rounded-t-2xl shadow-md text-center relative">
             <h1 id="hotelTitle" class="text-3xl font-black mb-1 mt-2">載入中...</h1>
-            <p id="dateTitle" class="text-lg font-bold text-blue-200">出貨點收系統</p>
-            <!-- ★ 新增：隱形背景同步的小綠點 -->
+            <div class="flex justify-center items-center gap-3 mt-2">
+                <p id="dateTitle" class="text-lg font-bold text-blue-200">出貨點收系統</p>
+                <!-- 移除了定時器，加上手動重新載入按鈕 -->
+                <button onclick="fetchData(true)" class="bg-blue-700 text-white text-sm px-3 py-1 rounded-lg shadow active:bg-blue-600 border border-blue-600">
+                    🔄 重新載入
+                </button>
+            </div>
             <span id="syncIndicator" class="text-xs text-green-300 font-bold opacity-0 transition-opacity duration-500 absolute top-4 right-4 tracking-widest">●即時同步中</span>
         </div>
         
@@ -79,7 +84,7 @@
     <!-- ★ 引入 Firebase 模組 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getFirestore, collection, query, where, getDocs, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+        import { getFirestore, collection, query, where, getDocs, doc, setDoc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4",
@@ -99,20 +104,24 @@
         let groupedData = {}; 
         let activeDeptKey = ""; 
         let globalItemOrder = {}; 
-        let autoSyncTimer = null; // 自動同步計時器
+        let autoSyncTimer = null; 
 
         const clientCanvas = document.getElementById('clientCanvas');
         const driverCanvas = document.getElementById('driverCanvas');
         const clientCtx = clientCanvas.getContext('2d');
         const driverCtx = driverCanvas.getContext('2d');
 
-        // 將內部函數綁定到 window 讓 HTML 標籤可以呼叫
+        // 綁定所有 HTML 會呼叫的函數
         window.dateChanged = dateChanged;
         window.clearCanvas = clearCanvas;
         window.openSignModal = openSignModal;
         window.closeSignModal = closeSignModal;
         window.submitVerify = submitVerify;
         window.handleQtyChange = handleQtyChange;
+        window.toggleDropdown = toggleDropdown;
+        window.selectOption = selectOption;
+        window.addNewItem = addNewItem;
+        window.fetchData = fetchData;
 
         const loadingHtml = `
             <div class="flex flex-col items-center justify-center py-12 space-y-4">
@@ -126,6 +135,14 @@
 
         function getLocalDateString(dateObj) {
             return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+
+        // 精確時間產生器
+        function getExactTimeString() {
+            const now = new Date();
+            const y = now.getFullYear(); const m = String(now.getMonth() + 1).padStart(2, '0'); const d = String(now.getDate()).padStart(2, '0');
+            const h = String(now.getHours()).padStart(2, '0'); const min = String(now.getMinutes()).padStart(2, '0'); const s = String(now.getSeconds()).padStart(2, '0');
+            return `${y}-${m}-${d} ${h}:${min}:${s}`;
         }
 
         function setupDateLimits() {
@@ -142,13 +159,12 @@
 
         function dateChanged() { 
             updateDateDisplay(); 
-            // 日期改變時，先看看有沒有本地記憶，沒有才顯示轉圈圈
             let cachedData = localStorage.getItem(`logistics_cache_${currentHotel}_${currentDate}`);
             if (cachedData) {
                 processAndRenderData(JSON.parse(cachedData));
-                fetchData(true); // 背景拿最新
+                fetchData(true); 
             } else {
-                fetchData(false); // 沒記憶，只好轉圈圈
+                fetchData(false); 
             }
         }
 
@@ -170,7 +186,6 @@
             document.getElementById('hotelTitle').innerText = currentHotel + " 點交";
             setupDateLimits();
             
-            // ★ 光速秒開機制：先讀取手機裡的記憶體 (localStorage)
             let cachedTemplate = localStorage.getItem(`inventory_masterData`);
             let cachedData = localStorage.getItem(`logistics_cache_${currentHotel}_${currentDate}`);
 
@@ -185,20 +200,17 @@
             }
 
             if (cachedData) {
-                // 如果有記憶，瞬間渲染畫面！0.1秒打開！
                 try {
                     processAndRenderData(JSON.parse(cachedData));
-                    fetchData(true); // 畫面出來後，在背景偷偷去 Firebase 更新
+                    fetchData(true); 
                 } catch(e) {
                     fetchData(false);
                 }
             } else {
-                // 第一次開這間飯店，乖乖轉圈圈
                 document.getElementById('departmentsContainer').innerHTML = loadingHtml;
                 fetchData(false);
             }
 
-            // 背景同步排序表
             getDoc(doc(db, 'inventory_config', 'master_template')).then(templateDoc => {
                 if (templateDoc.exists() && templateDoc.data().items) {
                     let template = templateDoc.data().items;
@@ -210,12 +222,9 @@
                 }
             });
 
-            // 設定每30秒自動背景同步
-            if (autoSyncTimer) clearInterval(autoSyncTimer);
-            autoSyncTimer = setInterval(() => fetchData(true), 30000);
+            if (autoSyncTimer) clearInterval(autoSyncTimer); // 移除閃屏干擾
         }
 
-        // 核心：從 Firebase 組合今日盤點與物流紀錄
         async function fetchData(isBackground = false) {
             if (!isBackground) {
                 document.getElementById('departmentsContainer').innerHTML = loadingHtml.replace("初次載入資料中...", "讀取最新資料中...");
@@ -231,7 +240,7 @@
                 let rawData = [];
                 let baseInventoryItems = [];
 
-                // 1. 抓取阿姨今日盤點輸入的紀錄 (作為預設出貨單)
+                // 1. 抓阿姨輸入的資料
                 const invQ = query(collection(db, "inventory_records"), where("date", "==", currentDate));
                 const invSnap = await getDocs(invQ);
 
@@ -242,7 +251,7 @@
                         if (deptName === "") deptName = "房務"; 
                         
                         baseInventoryItems.push({
-                            hotelFull: d.hotel, // 把原本阿姨打的完整飯店名字存起來
+                            hotelFull: d.hotel,
                             deptName: deptName,
                             itemName: d.item,
                             originalQty: d.doubleCount || d.count || "0",
@@ -251,7 +260,7 @@
                     }
                 });
 
-                // 2. 抓取物流端是否已經存過紀錄與簽名
+                // 2. 抓物流簽收過的資料
                 const logQ = query(collection(db, "logistics_records"), where("date", "==", currentDate), where("hotelKeyword", "==", currentHotel));
                 const logSnap = await getDocs(logQ);
                 let savedLogistics = {};
@@ -261,9 +270,8 @@
                     savedLogistics[d.deptName] = d;
                 });
 
-                // 3. 把兩邊資料合併 (加入智能配對機制)
+                // 3. 把兩邊資料合併
                 baseInventoryItems.forEach(item => {
-                    // ★ 智能名字配對：不管舊資料是叫「房務」還是「H2O 房務」，通通抓出來！
                     let savedDept = savedLogistics[item.deptName] || 
                                     savedLogistics[item.hotelFull] || 
                                     savedLogistics[`${currentHotel} ${item.deptName}`];
@@ -307,9 +315,29 @@
                     });
                 });
 
-                // 抓完立刻存進手機記憶體
+                // ★ 4. 補回物流「自己新增」的臨時品項 (阿姨表單沒有，但在 Firebase 點收紀錄有)
+                for (let deptKey in savedLogistics) {
+                    let savedDept = savedLogistics[deptKey];
+                    if (savedDept.items) {
+                        savedDept.items.forEach(savedItem => {
+                            let exists = rawData.some(r => r.deptName === savedDept.deptName && r.itemName === savedItem.itemName);
+                            if (!exists) {
+                                rawData.push({
+                                    deptName: savedDept.deptName,
+                                    itemName: savedItem.itemName,
+                                    originalQty: savedItem.originalQty || "0",
+                                    auntNote: savedItem.auntNote || "",
+                                    actualQty: savedItem.actualQty !== undefined ? savedItem.actualQty : (savedItem.originalQty || "0"),
+                                    driverNote: savedItem.driverNote || "",
+                                    clientSig: savedDept.clientSig || "",
+                                    driverSig: savedDept.driverSig || ""
+                                });
+                            }
+                        });
+                    }
+                }
+
                 localStorage.setItem(`logistics_cache_${currentHotel}_${currentDate}`, JSON.stringify(rawData));
-                
                 processAndRenderData(rawData);
             } catch (err) {
                 console.error(err);
@@ -334,7 +362,9 @@
 
             groupedData = {};
             cleanData.forEach(item => {
-                if (item.originalQty === "" || item.originalQty === "0" || item.originalQty === 0) {
+                // 如果原始數量是0而且實收也是0，才略過(避免自己新增的0被吃掉)
+                if ((item.originalQty === "" || item.originalQty === "0" || item.originalQty === 0) && 
+                    (item.actualQty === "" || item.actualQty === "0" || item.actualQty === 0)) {
                     return; 
                 }
 
@@ -378,9 +408,81 @@
             }
         }
 
+        // ★ 新增功能：打開與關閉下拉選單
+        function toggleDropdown(deptId, e) {
+            e.stopPropagation();
+            const menu = document.getElementById(`customDropdownMenu-${deptId}`);
+            if (menu) menu.classList.toggle('hidden');
+        }
+
+        // ★ 新增功能：從下拉選單選取品項
+        function selectOption(deptId, val) {
+            document.getElementById(`newItemInput-${deptId}`).value = val;
+            document.getElementById(`customDropdownMenu-${deptId}`).classList.add('hidden');
+        }
+
+        // ★ 新增功能：將新品項塞入畫面的部門列表
+        function addNewItem(deptId, deptName) {
+            const inputEl = document.getElementById(`newItemInput-${deptId}`);
+            const newItemName = inputEl.value.trim();
+
+            if (!newItemName) {
+                alert("請輸入要新增的品項名稱！");
+                return;
+            }
+            
+            // 檢查是否已經存在
+            let exists = groupedData[deptName].items.some(i => i.itemName === newItemName);
+            if (exists) {
+                alert("這個品項已經在上方列表裡面囉！");
+                return;
+            }
+
+            // 直接塞入記憶體，預設數量為 0
+            groupedData[deptName].items.push({
+                deptName: deptName,
+                itemName: newItemName,
+                originalQty: "0",
+                auntNote: "",
+                actualQty: "0",
+                driverNote: "司機臨時新增"
+            });
+
+            inputEl.value = "";
+            
+            const toast = document.getElementById('toast');
+            toast.innerText = "✅ 已新增臨時品項！";
+            toast.classList.remove('opacity-0'); 
+            setTimeout(() => toast.classList.add('opacity-0'), 2000);
+
+            renderDepartments(); // 重新畫畫面
+        }
+
+        // 全域點擊監聽器，用來關閉所有展開的下拉選單
+        document.addEventListener('click', function(e) {
+            document.querySelectorAll('[id^="customDropdownMenu-"]').forEach(menu => {
+                const deptId = menu.id.split('-')[1];
+                const btn = document.getElementById(`dropdownBtn-${deptId}`);
+                const input = document.getElementById(`newItemInput-${deptId}`);
+                
+                if (menu && !menu.classList.contains('hidden')) {
+                    if (!menu.contains(e.target) && (!btn || !btn.contains(e.target)) && e.target !== input) {
+                        menu.classList.add('hidden');
+                    }
+                }
+            });
+        });
+
         function renderDepartments() {
             let html = "";
+            let deptIndex = 0;
+
+            const commonItems = ['方巾', '床墊', '枕頭', '床包', '羽毛被', '抱枕套', '置物墊', '嬰兒床圍組', '嬰兒床包/裙', '嬰兒被套', '嬰兒枕套', '嬰兒床圍', '桌裙', '親子床單', '親子被套', '涼被', '門簾'];
+
             for (let dept in groupedData) {
+                deptIndex++;
+                let deptId = `dept_${deptIndex}`; // 產生安全 ID
+
                 let hasClientSig = groupedData[dept].clientSig ? true : false;
                 let hasDriverSig = groupedData[dept].driverSig ? true : false;
                 let isCompleted = hasClientSig && hasDriverSig;
@@ -436,12 +538,39 @@
                     </div>
                 `}).join('');
 
+                // ★ 新增的下拉選單選項 HTML
+                let dropdownHtml = commonItems.map(val => 
+                    `<div class="p-3 border-b border-gray-100 text-xl font-black text-gray-700 active:bg-blue-50 cursor-pointer" onclick="selectOption('${deptId}', '${val}')">${val}</div>`
+                ).join('');
+
+                // ★ 司機臨時新增欄位 (如果已簽收則隱藏)
+                let addItemHtml = "";
+                if (!isCompleted) {
+                    addItemHtml = `
+                    <div class="mt-4 bg-indigo-50 p-4 rounded-xl border border-dashed border-indigo-300">
+                        <h3 class="text-sm font-black mb-2 text-indigo-800">➕ 臨時新增出貨品項</h3>
+                        <div class="flex gap-2 relative">
+                            <div class="relative flex-1">
+                                <input id="newItemInput-${deptId}" class="w-full h-full p-2 text-lg font-bold border border-indigo-200 rounded-lg outline-none focus:border-indigo-500 bg-white pr-10" placeholder="手打或選單 👉">
+                                <button id="dropdownBtn-${deptId}" onclick="toggleDropdown('${deptId}', event)" class="absolute right-1 top-1/2 transform -translate-y-1/2 p-1 bg-indigo-100 text-indigo-800 rounded-md font-bold shadow-sm border border-indigo-300 active:bg-indigo-200 flex items-center justify-center h-8 w-8">
+                                    <svg class="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                                </button>
+                                <div id="customDropdownMenu-${deptId}" class="hidden absolute z-[30000] w-full mt-1 max-h-60 overflow-y-auto bg-white border-2 border-indigo-300 rounded-xl shadow-2xl">
+                                    ${dropdownHtml}
+                                </div>
+                            </div>
+                            <button onclick="addNewItem('${deptId}', '${dept}')" class="px-4 bg-green-600 text-white rounded-lg font-bold text-lg shadow-md active:bg-green-700 whitespace-nowrap">新增</button>
+                        </div>
+                    </div>`;
+                }
+
                 html += `
                 <div class="bg-white p-4 rounded-2xl shadow-md border border-gray-200 mb-6">
                     <div class="bg-gray-800 text-white p-3 -mx-4 -mt-4 mb-3 rounded-t-2xl">
                         <h2 class="text-xl font-black text-center">${dept}</h2>
                     </div>
                     ${itemsHtml}
+                    ${addItemHtml}
                     ${actionButton}
                 </div>`;
             }
@@ -510,7 +639,6 @@
             let payloads = [];
             let syncDepts = [];
 
-            // 打包當下點交的部門
             let safeItemsForDatabase = groupedData[activeDeptKey].items.map(item => ({
                 deptName: item.deptName,
                 itemName: item.itemName,
@@ -529,7 +657,6 @@
                 driverSig: dBase64
             });
 
-            // 自動同步其他尚未簽名部門
             if (isNewDriverSig && dBase64 !== "") {
                 for (let dept in groupedData) {
                     if (dept !== activeDeptKey) {
@@ -557,11 +684,26 @@
                 }
             }
 
-            // 發送至 Firebase
             try {
+                // ★ 寫入單據與時光機軌跡
                 const savePromises = payloads.map(p => {
                     const docId = `${p.date}_${p.hotelKeyword}_${p.deptName}`;
                     const docRef = doc(db, 'logistics_records', docId);
+
+                    // 加入時光機發報
+                    addDoc(collection(db, 'history_logs'), {
+                        logDate: getLocalDateString(new Date()),
+                        timestamp: Date.now(),
+                        timeString: getExactTimeString(),
+                        operator: "🚚 物流點收系統",
+                        date: p.date,
+                        hotel: `${p.hotelKeyword} ${p.deptName}`,
+                        item: "物流點收單",
+                        field: "點交狀態",
+                        oldValue: "未點交",
+                        newValue: "雙方已簽收"
+                    });
+
                     return setDoc(docRef, {
                         date: p.date,
                         hotelKeyword: p.hotelKeyword,
@@ -587,8 +729,6 @@
                 }
 
                 closeSignModal();
-                
-                // 存檔成功後，呼叫 fetchData(true) 背景更新並寫入 localStorage 快取
                 fetchData(true);
                 
                 const toast = document.getElementById('toast');
