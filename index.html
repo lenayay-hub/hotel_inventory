@@ -48,7 +48,7 @@
                             ⚙️ 更新設定
                         </button>
                         <button onclick="manualRefresh()" class="bg-blue-100 text-blue-800 px-3 py-2 rounded-xl font-bold text-sm shadow-sm active:bg-blue-200 flex-1">
-                            🔄 重新載入
+                            🔄 手動重載
                         </button>
                     </div>
                     <button onclick="syncOldInventoryFromSheet(event)" class="bg-yellow-100 text-yellow-800 px-3 py-2 rounded-xl font-bold text-sm shadow-sm active:bg-yellow-200 w-full text-center">
@@ -68,7 +68,7 @@
             <div class="bg-white p-5 rounded-2xl shadow-sm mb-6 flex flex-col gap-4 border border-gray-200">
                 <div class="relative w-full h-16">
                     <span class="absolute left-5 top-4 text-gray-400 text-3xl">🔍</span>
-                    <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-2xl font-bold pl-16 pr-4 outline-none" placeholder="搜尋飯店名稱..." oninput="renderHome()">
+                    <input id="searchInput" class="w-full h-full border-2 border-blue-200 focus:border-blue-500 rounded-xl text-2xl font-bold pl-16 pr-4 outline-none" placeholder="搜尋飯店名稱..." oninput="renderHome(true)">
                 </div>
             </div>
 
@@ -190,6 +190,9 @@
         </div>
     </div>
 
+    <!-- ==========================================
+         ★ 1. 瞬間繪製核心 + 無痕DOM更新技術
+         ========================================== -->
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyPrkLoz1QNrynxKK09CWgMNbuePWCmQdtmx8Iqwq9l90xk0ZGZSOc-N-bkTePyXb4RVA/exec";
         const todayHotels = ["歐遊", "H2O", "花季Ａ館", "花季Ｃ館", "花季", "捷中正", "文七", "好六"]; 
@@ -209,6 +212,11 @@
 
         const canvas = document.getElementById('signCanvas');
         const ctx = canvas.getContext('2d');
+
+        // ★ 核心工具：產生不會衝突的安全 ID，用來做無痕更新
+        window.getSafeId = function(str) {
+            return "id_" + Array.from(str).map(c => c.charCodeAt(0).toString(16)).join('_');
+        };
 
         function getLocalDateString(dateObj) { return new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0]; }
 
@@ -250,7 +258,7 @@
                 if (cachedMaster) {
                     masterData = JSON.parse(cachedMaster); buildHotelStructure();
                     if (cachedInputs) userInputs = JSON.parse(cachedInputs);
-                    renderHome(); 
+                    renderHome(true); 
                 } else {
                     document.getElementById('hotelGrid').innerHTML = `<div class="col-span-3 text-center py-10 text-gray-500 font-bold text-xl">請點擊上方【⚙️ 更新設定】載入清單</div>`;
                 }
@@ -260,24 +268,32 @@
         instantBoot();
 
         // =========================================================================
-        // ★ 核心修復：嚴格獨立單據 + 依據復點時間亮燈的完美邏輯
+        // ★ 無痕更新：首頁儀表板
         // =========================================================================
-        function renderHome() {
+        function renderHome(forceRebuild = false) {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
             const filtered = allBaseHotels.filter(c => c.toLowerCase().includes(keyword));
             const grid = document.getElementById('hotelGrid');
             
+            let needsRebuild = forceRebuild || grid.children.length === 0;
+
+            // 檢查畫面上是不是有少按鈕 (防呆)
+            if (!needsRebuild) {
+                filtered.forEach(c => {
+                    if (!document.getElementById(`btn_${window.getSafeId(c)}`)) needsRebuild = true;
+                });
+            }
+            
             if (filtered.length > 0) {
-                grid.innerHTML = filtered.map(c => {
+                let htmlContent = "";
+                filtered.forEach(c => {
                     let isOrange = false;
-                    const targetDate = document.getElementById('homeDatePicker').value; // 儀表板選擇的復點完成日期
-                    
+                    const safeId = window.getSafeId(c);
+                    const targetDate = document.getElementById('homeDatePicker').value;
                     let depts = hotelStructure[c] || [];
                     let targetDept = depts.includes("房務") ? "房務" : (depts[0] || "");
-                    
                     let targetCat = masterData.find(d => d.baseName === c && d.deptName === targetDept);
                     let fullHotelName = targetCat ? targetCat.hotel : (targetDept === "房務" ? (c + " 房務") : (c + " " + targetDept));
-                    
                     let templateItems = masterData.filter(d => d.hotel === fullHotelName).map(d => d.item);
                     let targetItems = []; let canCheck = false;
                     
@@ -292,57 +308,47 @@
                     
                     if (canCheck) {
                         let foundCompletedDocOnTargetDate = false;
-
-                        // 尋找這間飯店的所有單據，檢查是否有任何一天的單據符合「完全簽滿」且「簽滿時間落在 targetDate」
                         for (let d in userInputs) {
                             let docInputs = userInputs[d][fullHotelName];
                             if (!docInputs) continue;
-
                             const customItems = Object.keys(docInputs).filter(item => !templateItems.includes(item));
                             let allItemsToCheck = targetItems.concat(customItems);
-
                             if (allItemsToCheck.length === 0) continue;
 
-                            let isAllSigned = true;
-                            let docCompletedDate = ''; // 記錄這張單據裡面，最後一個被簽名的時間
-
+                            let isAllSigned = true; let docCompletedDate = '';
                             for (let item of allItemsToCheck) {
                                 let u = docInputs[item];
-                                // 只要這張單據裡面，有任何一個該簽的品項沒簽，這張單子就不算完成！
-                                if (!u || !u.doubleSignature) {
-                                    isAllSigned = false;
-                                    break;
-                                }
-                                
-                                // 抓出這張單據最後一個被簽名的時間
+                                if (!u || !u.doubleSignature) { isAllSigned = false; break; }
                                 let signTime = u.doubleSignDate || (d + " 23:59:59");
-                                if (signTime > docCompletedDate) {
-                                    docCompletedDate = signTime;
-                                }
+                                if (signTime > docCompletedDate) docCompletedDate = signTime;
                             }
-
-                            // 如果這張單據「全部品項都簽滿了」，而且「完成的日期剛好就是儀表板選的這天」
                             if (isAllSigned && docCompletedDate.startsWith(targetDate)) {
-                                foundCompletedDocOnTargetDate = true;
-                                break; // 找到了，就立刻亮橘燈，不需要再檢查其他單據
+                                foundCompletedDocOnTargetDate = true; break;
                             }
                         }
-
                         isOrange = foundCompletedDocOnTargetDate;
                     }
 
-                    let btnClasses = isOrange 
-                        ? "bg-orange-500 border-2 border-orange-600 shadow-lg active:bg-orange-600 text-white" 
-                        : "bg-white border-2 border-blue-200 shadow-md active:bg-blue-100 text-blue-900";
+                    let btnClasses = isOrange ? "bg-orange-500 border-2 border-orange-600 shadow-lg active:bg-orange-600 text-white" : "bg-white border-2 border-blue-200 shadow-md active:bg-blue-100 text-blue-900";
                     let shadowStyle = isOrange ? "text-shadow: 1px 1px 0px rgba(0,0,0,0.3);" : "text-shadow: 0.5px 0.5px 0px rgba(30,58,138,0.3);";
 
-                    return `<button onclick="goToHotel('${c}')" class="${btnClasses} rounded-2xl p-1 transition-colors flex items-center justify-center aspect-square"><span class="text-3xl font-black break-words w-full text-center leading-tight tracking-wide" style="font-weight: 900; ${shadowStyle}">${c}</span></button>`;
-                }).join('');
+                    if (needsRebuild) {
+                        htmlContent += `<button id="btn_${safeId}" onclick="goToHotel('${c}')" class="${btnClasses} rounded-2xl p-1 transition-colors flex items-center justify-center aspect-square">
+                                            <span id="span_${safeId}" class="text-3xl font-black break-words w-full text-center leading-tight tracking-wide" style="font-weight: 900; ${shadowStyle}">${c}</span>
+                                        </button>`;
+                    } else {
+                        // ★ 無痕更新：只替換顏色，不重刷畫面！
+                        document.getElementById(`btn_${safeId}`).className = `${btnClasses} rounded-2xl p-1 transition-colors flex items-center justify-center aspect-square`;
+                        document.getElementById(`span_${safeId}`).style = `font-weight: 900; ${shadowStyle}`;
+                    }
+                });
+
+                if (needsRebuild) grid.innerHTML = htmlContent;
+
             } else {
                 grid.innerHTML = `<div class="col-span-3 text-center py-10 text-gray-500 font-bold text-2xl">找不到飯店</div>`;
             }
         }
-        // =========================================================================
 
         function getTargetDateStr(baseName) {
             const today = new Date();
@@ -371,7 +377,7 @@
             document.getElementById('deptSelect').innerHTML = html;
 
             updateCurrentHotelName();
-            renderItems();
+            renderItems(true); // 切換飯店必須強制重繪
         }
 
         function updateCurrentHotelName() {
@@ -379,12 +385,15 @@
             currentHotelName = target ? target.hotel : (currentDept === "房務" ? currentBaseHotel : (currentBaseHotel + " " + currentDept));
         }
 
-        function changeDept(newDept) { currentDept = newDept; updateCurrentHotelName(); renderItems(); }
-        function goHome() { document.getElementById('homeView').classList.remove('hidden'); document.getElementById('hotelView').classList.add('hidden'); document.getElementById('searchInput').value = ""; renderHome(); }
-        function homeDateChanged() { const d = new Date(document.getElementById('homeDatePicker').value); document.getElementById('homeDateDisplay').innerText = `${d.getMonth() + 1}月${d.getDate()}日`; renderHome(); }
-        function dateChanged() { const d = new Date(document.getElementById('datePicker').value); document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; if(currentHotelName) renderItems(); }
+        function changeDept(newDept) { currentDept = newDept; updateCurrentHotelName(); renderItems(true); }
+        function goHome() { document.getElementById('homeView').classList.remove('hidden'); document.getElementById('hotelView').classList.add('hidden'); document.getElementById('searchInput').value = ""; renderHome(true); }
+        function homeDateChanged() { const d = new Date(document.getElementById('homeDatePicker').value); document.getElementById('homeDateDisplay').innerText = `${d.getMonth() + 1}月${d.getDate()}日`; renderHome(true); }
+        function dateChanged() { const d = new Date(document.getElementById('datePicker').value); document.getElementById('dateDisplay').innerText = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; if(currentHotelName) renderItems(true); }
 
-        function renderItems() {
+        // =========================================================================
+        // ★ 無痕更新：內頁盤點項目 (絕對不干擾打字)
+        // =========================================================================
+        function renderItems(forceRebuild = false) {
             const dateStr = document.getElementById('datePicker').value;
             if (!currentHotelName) return;
             let displayItems = masterData.filter(d => d.hotel === currentHotelName).map(d => d.item);
@@ -392,9 +401,26 @@
             const todayInputs = (userInputs[dateStr] && userInputs[dateStr][currentHotelName]) || {};
             for (let itemName in todayInputs) { if (!displayItems.includes(itemName)) displayItems.push(itemName); }
 
+            const itemsList = document.getElementById('itemsList');
+            let needsRebuild = forceRebuild || itemsList.children.length === 0 || itemsList.dataset.hotel !== currentHotelName;
+
+            // 檢查畫面上是不是有少卡片 (例如有新項目加入)
+            if (!needsRebuild) {
+                displayItems.forEach(itemName => {
+                    if (!document.getElementById(`card_${window.getSafeId(itemName)}`)) needsRebuild = true;
+                });
+            }
+
+            if (needsRebuild) {
+                itemsList.dataset.hotel = currentHotelName;
+                itemsList.innerHTML = ""; // 準備重建
+            }
+
             let htmlContent = "";
             displayItems.forEach(itemName => {
+                const safeId = window.getSafeId(itemName);
                 const u = todayInputs[itemName] || {};
+                
                 const count = (u.count !== undefined && u.count !== null && u.count !== '') ? u.count : '';
                 const doubleCount = (u.doubleCount !== undefined && u.doubleCount !== null && u.doubleCount !== '') ? u.doubleCount : '';
                 const hasSigned = u.hasSigned || false; const doubleHasSigned = u.doubleHasSigned || false;
@@ -423,25 +449,49 @@
 
                 let cardClass = supSignedEver ? "bg-pink-100 border-2 border-pink-400 shadow-md" : "bg-white border border-gray-200 shadow-sm";
 
-                htmlContent += `
-                <div class="${cardClass} p-4 rounded-2xl relative overflow-hidden transition-colors duration-300">
-                    <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${itemName}</div>
-                    <div class="flex gap-2 mb-4 relative z-20">
-                        <div class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
-                            <div class="text-sm font-bold text-gray-500 mb-2 text-center">現場數量</div>
-                            <div onclick="handleItemClick('${itemName}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">${auntText}</div>
-                            ${auntActionButton}
+                if (needsRebuild) {
+                    htmlContent += `
+                    <div id="card_${safeId}" class="${cardClass} p-4 rounded-2xl relative overflow-hidden transition-colors duration-300">
+                        <div class="font-black text-2xl text-gray-800 mb-3 z-20 relative">${itemName}</div>
+                        <div class="flex gap-2 mb-4 relative z-20">
+                            <div id="aunt_bg_${safeId}" class="flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}">
+                                <div class="text-sm font-bold text-gray-500 mb-2 text-center">現場數量</div>
+                                <div id="aunt_box_${safeId}" onclick="handleItemClick('${itemName}', 'aunt')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}">${auntText}</div>
+                                <div id="aunt_action_${safeId}">${auntActionButton}</div>
+                            </div>
+                            <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
+                                <div class="text-sm font-bold text-blue-700 mb-2 text-center">複點數量</div>
+                                <div id="sup_box_${safeId}" onclick="handleItemClick('${itemName}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">${supText}</div>
+                                <div id="sup_action_${safeId}">${supActionButton}</div>
+                            </div>
                         </div>
-                        <div class="flex-1 bg-blue-50 rounded-xl p-3 border border-blue-200 flex flex-col justify-between">
-                            <div class="text-sm font-bold text-blue-700 mb-2 text-center">複點數量</div>
-                            <div onclick="handleItemClick('${itemName}', 'sup')" class="px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}">${supText}</div>
-                            ${supActionButton}
-                        </div>
-                    </div>
-                    <input type="text" oninput="handleInput('${dateStr}', '${currentHotelName}', '${itemName}', 'note', this.value)" onchange="window.firebaseSubmit('${currentHotelName}', '${itemName}')" value="${u.note || ''}" ${isSaving ? 'disabled' : ''} class="w-full p-3 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20 focus:border-blue-500" placeholder="📝 點此可寫備註(寫完自動存)">
-                </div>`;
+                        <input type="text" id="note_${safeId}" oninput="handleInput('${dateStr}', '${currentHotelName}', '${itemName}', 'note', this.value)" onchange="window.firebaseSubmit('${currentHotelName}', '${itemName}')" value="${u.note || ''}" ${isSaving ? 'disabled' : ''} class="w-full p-3 border border-gray-200 rounded-xl text-base outline-none bg-gray-50 relative z-20 focus:border-blue-500" placeholder="📝 點此可寫備註(寫完自動存)">
+                    </div>`;
+                } else {
+                    // ★ 無痕更新：只替換裡面的內容！如果使用者正在打字，絕對不干擾他！
+                    document.getElementById(`card_${safeId}`).className = `${cardClass} p-4 rounded-2xl relative overflow-hidden transition-colors duration-300`;
+                    document.getElementById(`aunt_bg_${safeId}`).className = `flex-1 bg-gray-50 rounded-xl p-3 border border-gray-200 flex flex-col justify-between ${supSignedEver ? 'opacity-60' : ''}`;
+                    
+                    document.getElementById(`aunt_box_${safeId}`).className = `px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${auntDisplayClass}`;
+                    document.getElementById(`aunt_box_${safeId}`).innerHTML = auntText;
+                    document.getElementById(`aunt_action_${safeId}`).innerHTML = auntActionButton;
+
+                    document.getElementById(`sup_box_${safeId}`).className = `px-1 py-3 text-center font-black text-3xl border-b-4 rounded-t-lg cursor-pointer mb-3 ${supDisplayClass}`;
+                    document.getElementById(`sup_box_${safeId}`).innerHTML = supText;
+                    document.getElementById(`sup_action_${safeId}`).innerHTML = supActionButton;
+
+                    let noteInput = document.getElementById(`note_${safeId}`);
+                    // ⚠️ 最重要的一行：如果游標在這個備註欄裡，系統「絕對不」替換他的文字！
+                    if (noteInput && document.activeElement !== noteInput) {
+                        noteInput.value = u.note || '';
+                        noteInput.disabled = isSaving;
+                    }
+                }
             });
-            document.getElementById('itemsList').innerHTML = htmlContent;
+
+            if (needsRebuild) {
+                itemsList.innerHTML = htmlContent;
+            }
         }
 
         function handleInput(date, category, item, field, value) {
@@ -502,7 +552,7 @@
             if (activeRole === 'aunt') { handleInput(dateStr, activeCategory, activeItem, 'signature', sigBase64); handleInput(dateStr, activeCategory, activeItem, 'hasSigned', true); } 
             else { handleInput(dateStr, activeCategory, activeItem, 'doubleSignature', sigBase64); handleInput(dateStr, activeCategory, activeItem, 'doubleHasSigned', true); handleInput(dateStr, activeCategory, activeItem, 'doubleSignDate', getLocalTimeString(new Date())); }
             handleInput(dateStr, activeCategory, activeItem, 'isSubmitted', false); handleInput(dateStr, activeCategory, activeItem, 'saveError', false);
-            closeSign(); renderItems(); openCalc(activeCategory, activeItem, activeRole); 
+            closeSign(); renderItems(true); openCalc(activeCategory, activeItem, activeRole); 
         }
 
         function openCalc(hotel, item, role) {
@@ -528,7 +578,7 @@
                 const u = (userInputs[dateStr] && userInputs[dateStr][activeCategory] && userInputs[dateStr][activeCategory][activeItem]) || {};
                 if (!u.doubleSignature) handleInput(dateStr, activeCategory, activeItem, 'doubleCount', finalValue);
             } else handleInput(dateStr, activeCategory, activeItem, 'doubleCount', finalValue);
-            closeCalc(); renderItems(); window.firebaseSubmit(activeCategory, activeItem);
+            closeCalc(); renderItems(true); window.firebaseSubmit(activeCategory, activeItem);
         }
 
         function addNewItem() {
@@ -538,7 +588,7 @@
             const inToday = userInputs[dateStr] && userInputs[dateStr][currentHotelName] && userInputs[dateStr][currentHotelName][newItemName];
             if (inTemplate || inToday) return showMessage("這個品項已經在當天的列表裡面囉！");
             handleInput(dateStr, currentHotelName, newItemName, 'count', '');
-            inputEl.value = ""; showToast("✅ 已為您新增臨時品項！"); renderItems(); 
+            inputEl.value = ""; showToast("✅ 已為您新增臨時品項！"); renderItems(true); 
             setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
         }
         function toggleDropdown(e) { e.stopPropagation(); document.getElementById('customDropdownMenu').classList.toggle('hidden'); }
@@ -547,12 +597,11 @@
         function showMessage(text, isError = true) { document.getElementById('msgText').innerText = text; document.getElementById('msgIcon').innerText = isError ? "⚠️" : "💡"; document.getElementById('msgModal').classList.remove('hidden'); }
         function closeMsg() { document.getElementById('msgModal').classList.add('hidden'); }
         function showToast(text) { const toast = document.getElementById('toast'); toast.innerText = text; toast.classList.remove('opacity-0'); setTimeout(() => toast.classList.add('opacity-0'), 2500); }
-        function manualRefresh() { window.triggerBackgroundSync(true); }
-
+        
     </script>
 
     <!-- ==========================================
-         ★ 2. 延遲載入 Firebase (不卡畫面，背景默默連線)
+         ★ 2. 實時監聽器 (Real-time Snapshot)：別人打字，這裡瞬間改變
          ========================================== -->
     <script type="module">
         let db;
@@ -561,7 +610,8 @@
         async function initFirebaseAndSync() {
             try {
                 const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js");
-                const { getFirestore, collection, doc, setDoc, getDocs, writeBatch, getDoc, addDoc, query, where } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+                // ★ 導入 onSnapshot (實時監聽)
+                const { getFirestore, collection, doc, setDoc, getDocs, writeBatch, getDoc, addDoc, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
 
                 const firebaseConfig = {
                     apiKey: "AIzaSyBEXcnXOKRags29CvhM6TKe3N-zty-ela4", authDomain: "hotel-inventory-3a1ad.firebaseapp.com",
@@ -573,33 +623,32 @@
                 db = getFirestore(app);
                 isFirebaseLoaded = true;
 
-                window.triggerBackgroundSync = async function(isManual = false) {
-                    if (!isFirebaseLoaded) return;
-                    if(isManual) showToast("🔄 極速同步中...");
-                    const indicator = document.getElementById('syncIndicator');
-                    if(indicator) { indicator.classList.remove('opacity-0'); setTimeout(() => indicator.classList.add('opacity-0'), 1500); }
+                // 初始化載入飯店設定
+                const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
+                if (templateDoc.exists() && templateDoc.data().items) {
+                    masterData = templateDoc.data().items;
+                    buildHotelStructure();
+                }
 
-                    try {
-                        const templateDoc = await getDoc(doc(db, 'inventory_config', 'master_template'));
-                        if (templateDoc.exists() && templateDoc.data().items) {
-                            masterData = templateDoc.data().items;
-                            buildHotelStructure();
-                        }
+                // ★ 核心優化：開啟無痕即時監聽！
+                // 只要 Firebase 一有風吹草動，這段程式就會瞬間被喚醒！
+                const thirtyDaysAgoDate = new Date();
+                thirtyDaysAgoDate.setDate(thirtyDaysAgoDate.getDate() - 30);
+                const thirtyDaysAgoStr = getLocalDateString(thirtyDaysAgoDate);
+                const recordsQ = query(collection(db, 'inventory_records'), where("date", ">=", thirtyDaysAgoStr));
 
-                        const thirtyDaysAgoDate = new Date();
-                        thirtyDaysAgoDate.setDate(thirtyDaysAgoDate.getDate() - 30);
-                        const thirtyDaysAgoStr = getLocalDateString(thirtyDaysAgoDate);
-
-                        const recordsQ = query(collection(db, 'inventory_records'), where("date", ">=", thirtyDaysAgoStr));
-                        const recordsSnap = await getDocs(recordsQ);
-                        let dataChanged = false;
-
-                        recordsSnap.forEach(docSnap => {
-                            const r = docSnap.data();
+                onSnapshot(recordsQ, (snapshot) => {
+                    let dataChanged = false;
+                    
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added" || change.type === "modified") {
+                            const r = change.doc.data();
                             let dDate = String(r.date || "").replace(/\//g, '-').trim();
                             if(!userInputs[dDate]) userInputs[dDate] = {};
                             if(!userInputs[dDate][r.hotel]) userInputs[dDate][r.hotel] = {};
+                            
                             let local = userInputs[dDate][r.hotel][r.item];
+                            // 防衝突機制：如果這支手機正在努力存這筆資料，就先不要讓外面的資料蓋過去
                             if (local && local.isSaving) return; 
                             
                             userInputs[dDate][r.hotel][r.item] = { 
@@ -610,23 +659,20 @@
                                 isSaving: false, saveError: false
                             };
                             dataChanged = true;
-                        });
-                        
-                        if (dataChanged) {
-                            saveToLocal();
-                            if (!document.getElementById('homeView').classList.contains('hidden')) renderHome();
-                            else if (!document.getElementById('hotelView').classList.contains('hidden')) renderItems();
                         }
-                        if(isManual) showToast("✅ 最新資料已同步完成！");
-                    } catch (error) {
-                        console.log("背景同步等待下一次...", error);
-                        if(isManual) showMessage("連線不穩定，請稍後再試！");
+                    });
+
+                    if (dataChanged) {
+                        saveToLocal();
+                        // ★ 呼叫無痕更新 (傳入 false 代表絕對不撕毀重建畫面)
+                        if (!document.getElementById('homeView').classList.contains('hidden')) renderHome(false);
+                        else if (!document.getElementById('hotelView').classList.contains('hidden')) renderItems(false);
                     }
-                };
+                });
 
                 window.fetchSpecificDateData = async function(targetDateStr) {
                     if (!isFirebaseLoaded) return;
-                    showToast("☁️ 正在從雲端調閱歷史資料...");
+                    showToast("☁️ 正在調閱歷史資料...");
                     try {
                         const q = query(collection(db, 'inventory_records'), where("date", "==", targetDateStr));
                         const snap = await getDocs(q);
@@ -647,12 +693,9 @@
                         });
                         if(hasData) {
                             saveToLocal();
-                            if (!document.getElementById('homeView').classList.contains('hidden')) renderHome();
-                            else if (!document.getElementById('hotelView').classList.contains('hidden')) renderItems();
-                            showToast("✅ 歷史資料調閱成功！");
-                        } else {
-                            showToast("此日期無盤點資料。");
-                        }
+                            if (!document.getElementById('homeView').classList.contains('hidden')) renderHome(true);
+                            else if (!document.getElementById('hotelView').classList.contains('hidden')) renderItems(true);
+                        } else showToast("此日期無盤點資料。");
                     } catch(e) { console.error(e); }
                 }
 
@@ -674,12 +717,13 @@
                 }
 
                 window.firebaseSubmit = async function(category, item) {
-                    if (!isFirebaseLoaded) return showMessage("系統連線中，請稍等一秒再按存檔！");
+                    if (!isFirebaseLoaded) return showMessage("連線中，請稍等一秒！");
                     const dateStr = document.getElementById('datePicker').value;
                     const u = (userInputs[dateStr] && userInputs[dateStr][category] && userInputs[dateStr][category][item]) || null;
                     if (!u || (!u.signature && !u.doubleSignature)) return; 
 
-                    handleInput(dateStr, category, item, 'isSaving', true); handleInput(dateStr, category, item, 'saveError', false); renderItems();
+                    handleInput(dateStr, category, item, 'isSaving', true); handleInput(dateStr, category, item, 'saveError', false); 
+                    renderItems(false); // ★ 存檔時只秀小圈圈，絕對不閃屏
 
                     const payload = { 
                         date: dateStr, hotel: category, item: item, 
@@ -705,11 +749,11 @@
 
                         handleInput(dateStr, category, item, 'isSaving', false); handleInput(dateStr, category, item, 'isSubmitted', true); 
                         handleInput(dateStr, category, item, 'hasSigned', false); handleInput(dateStr, category, item, 'doubleHasSigned', false); 
-                        saveToLocal(); renderItems(); showToast("⚡ 數量已秒速存入極速雲端！");
+                        saveToLocal(); 
+                        renderItems(false); // ★ 存檔成功，無痕切換綠色勾勾
                     } catch(e) {
-                        console.error("Firebase 寫入失敗", e);
                         handleInput(dateStr, category, item, 'isSaving', false); handleInput(dateStr, category, item, 'saveError', true);
-                        saveToLocal(); renderItems(); showMessage("⚠️ 網路連線不穩！\n\n您的資料已保留在畫面上，請點擊紅色的「寫入失敗(點此重傳)」按鈕即可！");
+                        saveToLocal(); renderItems(false); showMessage("⚠️ 網路連線不穩！請點擊紅色按鈕重傳！");
                     }
                 };
 
@@ -717,13 +761,12 @@
                     if (!isFirebaseLoaded) return;
                     const btn = event.currentTarget; const originalText = btn.innerText; btn.innerText = "⏳ 下載中..."; btn.disabled = true;
                     try {
-                        showToast("向試算表索取設定...");
                         const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                         const data = await res.json();
                         if (data.template && data.template.length > 0) {
-                            btn.innerText = "⏳ 寫入Firebase...";
                             await setDoc(doc(db, 'inventory_config', 'master_template'), { items: data.template });
-                            showToast("✅ 設定同步完成！"); window.triggerBackgroundSync(true);
+                            showToast("✅ 設定同步完成！"); 
+                            setTimeout(()=>location.reload(), 1000);
                         } else showMessage("抓到的設定是空的！");
                     } catch (e) { showMessage("同步失敗：" + e.message); } 
                     finally { btn.innerText = originalText; btn.disabled = false; }
@@ -733,14 +776,12 @@
                     if (!isFirebaseLoaded) return;
                     const btn = event.currentTarget; const originalText = btn.innerHTML; btn.innerHTML = "⏳ 吸取中..."; btn.disabled = true;
                     try {
-                        showToast("索取所有舊盤點紀錄...");
                         const res = await fetch(`${API_URL}?action=getInventoryData&t=${new Date().getTime()}`);
                         const data = await res.json();
                         if (data.records && data.records.length > 0) {
-                            btn.innerHTML = "⏳ 寫入Firebase...";
+                            btn.innerHTML = "⏳ 寫入中...";
                             const chunkArray = (arr, size) => arr.length ? [arr.slice(0, size), ...chunkArray(arr.slice(size), size)] : [];
                             const recordChunks = chunkArray(data.records, 450);
-                            let totalImported = 0;
                             for (let i = 0; i < recordChunks.length; i++) {
                                 const batch = writeBatch(db);
                                 recordChunks[i].forEach(r => {
@@ -749,29 +790,28 @@
                                     let itemStr = String(r.item || "").trim();
                                     if(!dateStr || !hotelStr || !itemStr) return;
                                     const safeItem = itemStr.replace(/\//g, '-');
-                                    const docId = `${dateStr}_${hotelStr}_${safeItem}`.replace(/[\/\\?%*:|"<>]/g, '-');
-                                    batch.set(doc(db, 'inventory_records', docId), {
+                                    batch.set(doc(db, 'inventory_records', `${dateStr}_${hotelStr}_${safeItem}`.replace(/[\/\\?%*:|"<>]/g, '-')), {
                                         date: dateStr, hotel: hotelStr, item: itemStr,
                                         count: String(r.count || ""), note: r.note || "", signature: r.signature || "",
                                         doubleCount: String(r.doubleCount || ""), doubleSignature: r.doubleSignature || "",
                                         doubleSignDate: r.doubleSignDate || "", timestamp: new Date().toLocaleString()
                                     }, { merge: true });
-                                    totalImported++;
                                 });
                                 await batch.commit();
                             }
-                            showMessage(`✅ 搬家大成功！\n吸入 ${totalImported} 筆舊紀錄！`, false);
-                            window.triggerBackgroundSync(true); 
-                        } else showMessage("試算表中沒有舊資料喔！");
-                    } catch (e) { showMessage("吸取失敗！\n錯誤: " + e.message); } 
+                            showMessage(`✅ 成功吸入舊紀錄！`, false);
+                        } else showMessage("沒有舊資料！");
+                    } catch (e) { showMessage("吸取失敗！"); } 
                     finally { btn.innerHTML = originalText; btn.disabled = false; }
                 };
 
-                window.triggerBackgroundSync(false);
-                setInterval(() => window.triggerBackgroundSync(false), 30000);
+                // ★ 手動重整鍵，現在只需要重整畫面即可，因為資料已經是實時連線了
+                window.manualRefresh = function() {
+                    location.reload();
+                };
 
             } catch (error) {
-                console.error("Firebase 初始化失敗", error);
+                console.error("Firebase 失敗", error);
             }
         }
 
